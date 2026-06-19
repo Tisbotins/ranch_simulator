@@ -1,147 +1,209 @@
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
-/// RANCH SIMULATOR - COMPLETE PLAYABLE UNITY PROTOTYPE
-/// 
-/// Setup:
-/// 1. Create a new Unity 3D project.
-/// 2. In Assets, create a folder named Scripts.
-/// 3. Put this file in Assets/Scripts.
-/// 4. Create an Empty GameObject in the scene named RanchGame.
-/// 5. Drag this script onto RanchGame.
-/// 6. Press Play.
-/// 
-/// Controls:
-/// WASD = move
-/// Mouse = look around
-/// E = hold near Ranch Tree to extract Ranch
-/// B = bottle Ranch near Bottle Station
-/// F = sell one bottle near Sell Station
-/// Left Shift + F = sell all bottles near Sell Station
-/// U = upgrade bottle size near Upgrade Station
-/// G = upgrade Drew near Drew Station
-/// Left click = swing Ranch Sword
-/// T = spawn a test enemy wave immediately
-/// C = challenge CJ once unlocked
-/// R = restart after winning
-/// Escape = unlock cursor
-/// Left click = lock cursor again
-/// 
-/// This is built as one big script so you can actually get a working game fast.
-/// Later, you should split it into separate files.
+/// RANCH SIMULATOR: ULTIMATE UPDATE
+/// Drop this file into Assets/Scripts in a Unity 3D project and press Play.
+/// The bootstrap below creates the game automatically, so no scene setup is required.
+///
+/// Works with Unity's old Input Manager, new Input System, or Both.
 /// </summary>
 public class RanchSimulatorFullGame : MonoBehaviour
 {
-    // ---------- Core resources ----------
-    private float ranch = 0f;
-    private float money = 0f;
-    private int bottles = 0;
-    private int bottlesSold = 0;
+    public static RanchSimulatorFullGame Instance { get; private set; }
 
-    // ---------- Bottle upgrades ----------
-    private int bottleTier = 0;
+    // ============================================================
+    // RESOURCES AND PROGRESSION
+    // ============================================================
+
+    private double ranch;
+    private double money;
+    private long bottles;
+    private long bottlesSold;
 
     private readonly string[] bottleNames =
     {
-        "Cracked Bottle",
-        "Tiny Bottle",
-        "Standard Bottle",
-        "Family Bottle",
-        "Mega Jug",
-        "Industrial Drum",
-        "Ranch Tanker",
-        "Ranchenator Vessel"
+        "Cracked Bottle", "Tiny Bottle", "Standard Bottle", "Family Bottle",
+        "Mega Jug", "Industrial Drum", "Ranch Tanker", "Ranchenator Vessel"
     };
 
-    private readonly int[] bottleCaps =
+    private readonly int[] bottleCaps = { 1, 2, 5, 12, 30, 75, 200, 500 };
+    private int bottleTier;
+
+    private readonly string[] ranchTypeNames =
     {
-        1, 2, 5, 12, 30, 75, 200, 500
+        "Classic Ranch", "Premium Ranch", "Sparkling Ranch",
+        "Dark Ranch", "Quantum Ranch", "Divine Ranch"
     };
 
-    // ---------- Ranch Tree ----------
-    private float ranchPerSecond = 1.2f;
-    private float extractionMultiplier = 1f;
-    private float treeUpgradeCost = 150f;
-    private int treeLevel = 1;
+    private readonly double[] ranchValueMultipliers = { 1d, 2d, 5d, 20d, 100d, 1000d };
+    private readonly double[] laboratoryResearchCosts = { 0d, 0d, 500000d, 5000000d, 50000000d, 500000000d };
+    private int ranchTypeTier;
 
-    // ---------- Drew ----------
-    private GameObject drew;
-    private int drewLevel = 0;
-    private float drewTimer = 0f;
-    private float drewWorkInterval = 6f;
-    private float drewUpgradeCost = 100f;
-    private bool drewUnlocked = false;
-    private Vector3 drewTarget;
-    private bool drewMovingToTree = true;
+    private double ranchPerSecond = 1.5d;
+    private double extractionMultiplier = 1d;
 
-    // ---------- CJ ----------
-    private int cjHeat = 0;
-    private bool cjHasWarned = false;
-    private bool cjBattleUnlocked = false;
-    private bool cjDefeated = false;
-    private float cjPower = 10000f;
+    // ============================================================
+    // PLAYER, CAMERA, HEALTH, AND SWORD
+    // ============================================================
 
-    // ---------- Player / camera ----------
     private GameObject player;
     private CharacterController controller;
-    private Camera mainCam;
+    private Camera mainCamera;
 
-    private float moveSpeed = 6f;
-    private float mouseSensitivity = 2.2f;
-    private float cameraPitch = 15f;
-    private float gravity = -18f;
-    private float yVelocity = 0f;
+    private float moveSpeed = 7f;
+    private float mouseSensitivity = 2.1f;
+    private float cameraPitch = 17f;
+    private float verticalVelocity;
+    private const float Gravity = -20f;
 
-    // ---------- Player health / Ranch Sword ----------
-    private float playerMaxHealth = 100f;
-    private float playerHealth = 100f;
-    private float swordRange = 3.25f;
-    private float swordBaseDamage = 25f;
-    private float swordCooldown = 0.45f;
-    private float swordCooldownTimer = 0f;
-    private float swordAnimationTimer = 0f;
-    private float swordAnimationLength = 0.28f;
+    private float playerMaxHealth = 150f;
+    private float playerHealth = 150f;
+    private float invulnerabilityTimer;
+
+    private readonly string[] swordNames =
+    {
+        "Wooden Ranch Sword", "Iron Ranch Sword", "Steel Ranch Sword",
+        "Diamond Ranch Sword", "Quantum Ranch Sword", "CJ Slayer"
+    };
+
+    private readonly float[] swordDamages = { 10f, 25f, 60f, 150f, 500f, 2500f };
+    private readonly double[] swordUpgradeCosts = { 0d, 250d, 1250d, 6000d, 30000d, 150000d };
+    private int swordTier;
+
     private GameObject ranchSwordPivot;
+    private Renderer swordBladeRenderer;
     private Quaternion swordRestRotation;
     private Quaternion swordAttackRotation;
-    private float hurtMessageCooldown = 0f;
+    private float swordCooldownTimer;
+    private float swordAnimationTimer;
+    private const float SwordCooldown = 0.42f;
+    private const float SwordAnimationLength = 0.27f;
+    private const float SwordRange = 3.6f;
 
-    // ---------- Enemy waves ----------
+    // ============================================================
+    // DREW
+    // ============================================================
+
+    private GameObject drew;
+    private bool drewUnlocked;
+    private int drewLevel;
+    private double drewUpgradeBaseCost = 100d;
+    private float drewTimer;
+    private float drewWorkInterval = 6f;
+    private bool drewMovingToTree = true;
+    private readonly List<GameObject> miniDrews = new List<GameObject>();
+    private float miniDrewAttackTimer;
+
+    // ============================================================
+    // BUILDINGS
+    // ============================================================
+
+    private bool factoryBuilt;
+    private bool warehouseBuilt;
+    private bool laboratoryBuilt;
+    private bool fortressBuilt;
+    private bool citadelBuilt;
+    private int nextBuildingIndex;
+
+    private readonly string[] buildingNames =
+    {
+        "Ranch Factory", "Ranch Warehouse", "Ranch Laboratory",
+        "Ranch Fortress", "Ranch Citadel"
+    };
+
+    private readonly double[] buildingCosts =
+    {
+        2500d, 15000d, 100000d, 1000000d, 25000000d
+    };
+
+    private float factoryTimer;
+    private float fortressTimer;
+
+    // ============================================================
+    // WAVES AND ENEMIES
+    // ============================================================
+
     private readonly List<RanchEnemy> activeEnemies = new List<RanchEnemy>();
-    private float enemyWaveTimer = 0f;
-    private float enemyWaveInterval = 300f; // Five minutes
-    private int enemyWaveNumber = 0;
-    private int enemiesDefeated = 0;
+    private float waveTimer;
+    private const float WaveInterval = 180f; // Every three minutes.
+    private int waveNumber;
+    private int enemiesDefeated;
+    private int baseEnemyCount = 3;
 
-    // ---------- World objects ----------
+    // Exact requested wave scaling.
+    private const float HealthScalePerWave = 1.5f;
+    private const float DamageScalePerWave = 1.4f;
+    private const float SpeedScalePerWave = 1.1f;
+
+    // ============================================================
+    // CJ FINAL BATTLE
+    // ============================================================
+
+    private bool finalBattleActive;
+    private int finalBattlePhase;
+    private bool cjDefeated;
+
+    // ============================================================
+    // WORLD OBJECTS
+    // ============================================================
+
     private GameObject ranchTree;
     private GameObject bottleStation;
     private GameObject sellStation;
-    private GameObject upgradeStation;
+    private GameObject bottleUpgradeStation;
     private GameObject drewStation;
+    private GameObject swordStation;
+    private GameObject buildYard;
+    private GameObject laboratoryStation;
     private GameObject cjGate;
 
-    // ---------- Interaction ----------
-    private float interactRange = 3.2f;
-    private string currentPrompt = "";
-    private string lastEvent = "Welcome to Ranch Simulator. Extract Ranch. Bottle Ranch. Overthrow CJ.";
-    private float eventTimer = 0f;
+    private readonly List<GameObject> spawnedObjects = new List<GameObject>();
 
-    // ---------- Visual polish ----------
-    private List<GameObject> spawnedObjects = new List<GameObject>();
-    private Material greenMat;
-    private Material brownMat;
-    private Material blueMat;
-    private Material yellowMat;
-    private Material redMat;
-    private Material whiteMat;
-    private Material blackMat;
-    private Material ranchMat;
-    private Material purpleMat;
+    private Material greenMaterial;
+    private Material brownMaterial;
+    private Material blueMaterial;
+    private Material yellowMaterial;
+    private Material redMaterial;
+    private Material whiteMaterial;
+    private Material blackMaterial;
+    private Material ranchMaterial;
+    private Material purpleMaterial;
+    private Material cyanMaterial;
+    private Material orangeMaterial;
+    private Material grayMaterial;
+    private Material darkRedMaterial;
+
+    // ============================================================
+    // UI AND INTERACTION
+    // ============================================================
+
+    private const float InteractionRange = 3.5f;
+    private string currentPrompt = string.Empty;
+    private string lastEvent = "Extract Ranch. Build an empire. Overthrow CJ.";
+    private float eventTimer;
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+    }
 
     private void Start()
     {
+        Application.targetFrameRate = 60;
+        QualitySettings.vSyncCount = 1;
+
         CreateMaterials();
         BuildWorld();
         CreatePlayer();
@@ -149,20 +211,18 @@ public class RanchSimulatorFullGame : MonoBehaviour
         CreateDrew();
         LockCursor();
 
-        LogEvent("Welcome to McMinnville Ranch Country. CJ controls the market. Start small.");
+        waveTimer = WaveInterval;
+        LogEvent("Welcome to McMinnville Ranch Country. CJ controls the Ranch market.");
     }
 
     private void Update()
     {
         if (cjDefeated)
         {
-            if (Input.GetKeyDown(KeyCode.R))
+            if (RanchInput.Down(RanchAction.Restart))
             {
-                UnityEngine.SceneManagement.SceneManager.LoadScene(
-                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
-                );
+                SceneManager.LoadScene(SceneManager.GetActiveScene().name);
             }
-
             return;
         }
 
@@ -170,183 +230,176 @@ public class RanchSimulatorFullGame : MonoBehaviour
         HandleMovement();
         UpdateCamera();
         HandleCombat();
-        UpdatePromptsAndInteractions();
+        UpdateInteractions();
         UpdateDrew();
+        UpdateBuildings();
         UpdateEnemyWaves();
-        UpdateCJ();
-        UpdateEventTimer();
+        UpdateFinalBattle();
+        UpdateTimers();
     }
 
     // ============================================================
-    // WORLD BUILDING
+    // WORLD CREATION
     // ============================================================
 
     private void CreateMaterials()
     {
-        greenMat = MakeMat(new Color(0.25f, 0.65f, 0.25f));
-        brownMat = MakeMat(new Color(0.35f, 0.2f, 0.09f));
-        blueMat = MakeMat(new Color(0.2f, 0.45f, 0.9f));
-        yellowMat = MakeMat(new Color(0.95f, 0.75f, 0.25f));
-        redMat = MakeMat(new Color(0.85f, 0.2f, 0.15f));
-        whiteMat = MakeMat(new Color(0.9f, 0.9f, 0.85f));
-        blackMat = MakeMat(new Color(0.05f, 0.05f, 0.05f));
-        ranchMat = MakeMat(new Color(1.0f, 0.92f, 0.68f));
-        purpleMat = MakeMat(new Color(0.45f, 0.12f, 0.65f));
+        greenMaterial = MakeMaterial(new Color(0.22f, 0.62f, 0.22f));
+        brownMaterial = MakeMaterial(new Color(0.33f, 0.18f, 0.07f));
+        blueMaterial = MakeMaterial(new Color(0.18f, 0.43f, 0.92f));
+        yellowMaterial = MakeMaterial(new Color(0.95f, 0.74f, 0.18f));
+        redMaterial = MakeMaterial(new Color(0.85f, 0.18f, 0.12f));
+        whiteMaterial = MakeMaterial(new Color(0.92f, 0.92f, 0.88f));
+        blackMaterial = MakeMaterial(new Color(0.04f, 0.04f, 0.04f));
+        ranchMaterial = MakeMaterial(new Color(1f, 0.91f, 0.65f));
+        purpleMaterial = MakeMaterial(new Color(0.48f, 0.10f, 0.68f));
+        cyanMaterial = MakeMaterial(new Color(0.10f, 0.86f, 0.95f));
+        orangeMaterial = MakeMaterial(new Color(1f, 0.36f, 0.05f));
+        grayMaterial = MakeMaterial(new Color(0.35f, 0.38f, 0.42f));
+        darkRedMaterial = MakeMaterial(new Color(0.35f, 0.02f, 0.02f));
     }
 
-    private Material MakeMat(Color color)
+    private Material MakeMaterial(Color color)
     {
-        Material mat = new Material(Shader.Find("Standard"));
-        mat.color = color;
-        return mat;
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) shader = Shader.Find("Standard");
+        Material material = new Material(shader);
+        material.color = color;
+        return material;
     }
 
     private void BuildWorld()
     {
-        // Ground
         GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        ground.name = "McMinnville Oregon Ground";
-        ground.transform.position = Vector3.zero;
-        ground.transform.localScale = new Vector3(6f, 1f, 6f);
-        ground.GetComponent<Renderer>().material = greenMat;
+        ground.name = "McMinnville Oregon Ranch Grounds";
+        ground.transform.localScale = new Vector3(10f, 1f, 10f);
+        ground.GetComponent<Renderer>().material = greenMaterial;
         spawnedObjects.Add(ground);
 
-        // Ranch Tree
         ranchTree = new GameObject("Ranch Tree");
-        ranchTree.transform.position = new Vector3(0, 0, 8);
+        ranchTree.transform.position = new Vector3(0f, 0f, 8f);
 
-        GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        trunk.name = "Ranch Tree Trunk";
-        trunk.transform.parent = ranchTree.transform;
-        trunk.transform.localPosition = new Vector3(0, 1.5f, 0);
-        trunk.transform.localScale = new Vector3(0.8f, 1.8f, 0.8f);
-        trunk.GetComponent<Renderer>().material = brownMat;
+        GameObject trunk = CreatePrimitive(PrimitiveType.Cylinder, "Ranch Tree Trunk",
+            ranchTree.transform.position + new Vector3(0f, 1.7f, 0f),
+            new Vector3(0.9f, 2f, 0.9f), brownMaterial, ranchTree.transform);
 
-        GameObject crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        crown.name = "Ranch Tree Crown";
-        crown.transform.parent = ranchTree.transform;
-        crown.transform.localPosition = new Vector3(0, 4.1f, 0);
-        crown.transform.localScale = new Vector3(3.0f, 2.2f, 3.0f);
-        crown.GetComponent<Renderer>().material = ranchMat;
+        GameObject crown = CreatePrimitive(PrimitiveType.Sphere, "Ranch Tree Crown",
+            ranchTree.transform.position + new Vector3(0f, 4.4f, 0f),
+            new Vector3(3.4f, 2.5f, 3.4f), ranchMaterial, ranchTree.transform);
 
-        GameObject tap = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        tap.name = "Ranch Tap";
-        tap.transform.parent = ranchTree.transform;
-        tap.transform.localPosition = new Vector3(0, 2.1f, -0.75f);
-        tap.transform.localScale = new Vector3(0.35f, 0.25f, 1.0f);
-        tap.GetComponent<Renderer>().material = blueMat;
+        GameObject tap = CreatePrimitive(PrimitiveType.Cube, "Ranch Extraction Tap",
+            ranchTree.transform.position + new Vector3(0f, 2.1f, -0.9f),
+            new Vector3(0.35f, 0.25f, 1.2f), blueMaterial, ranchTree.transform);
 
-        spawnedObjects.Add(ranchTree);
+        RemoveCollider(tap);
+        CreateLabel("RANCH TREE\nHold E to extract", ranchTree.transform.position + new Vector3(0f, 6.2f, 0f));
 
-        CreateLabel("RANCH TREE\nHold E to extract", ranchTree.transform.position + new Vector3(0, 5.8f, 0));
+        bottleStation = CreateStation("Bottle Station", new Vector3(-8f, 0.5f, 0f), blueMaterial,
+            "BOTTLE STATION\nB = one | V = all");
+        sellStation = CreateStation("Sell Station", new Vector3(8f, 0.5f, 0f), yellowMaterial,
+            "SELL STATION\nF = sell | Shift+F = all");
+        bottleUpgradeStation = CreateStation("Bottle Upgrade Station", new Vector3(0f, 0.5f, -8f), redMaterial,
+            "BOTTLE UPGRADES\nPress U");
+        drewStation = CreateStation("Drew Station", new Vector3(-8f, 0.5f, -8f), whiteMaterial,
+            "DREW STATION\nPress G");
+        swordStation = CreateStation("Sword Upgrade Station", new Vector3(8f, 0.5f, -8f), grayMaterial,
+            "SWORD UPGRADES\nPress K");
+        buildYard = CreateStation("Building Yard", new Vector3(-14f, 0.5f, 8f), orangeMaterial,
+            "BUILDING YARD\nPress H");
+        laboratoryStation = CreateStation("Laboratory Research Pad", new Vector3(14f, 0.5f, 8f), purpleMaterial,
+            "RANCH RESEARCH\nPress J");
+        cjGate = CreateStation("CJ Gate", new Vector3(0f, 0.5f, 18f), blackMaterial,
+            "CJ GATE\nCitadel required | C");
 
-        // Stations
-        bottleStation = CreateStation("Bottle Station", new Vector3(-8, 0.5f, 0), blueMat, "BOTTLE STATION\nPress B");
-        sellStation = CreateStation("Sell Station", new Vector3(8, 0.5f, 0), yellowMat, "SELL STATION\nPress F");
-        upgradeStation = CreateStation("Bottle Upgrade Station", new Vector3(0, 0.5f, -8), redMat, "UPGRADE BOTTLES\nPress U");
-        drewStation = CreateStation("Drew Station", new Vector3(-8, 0.5f, -8), whiteMat, "DREW STATION\nPress G");
-        cjGate = CreateStation("CJ Gate", new Vector3(8, 0.5f, 8), blackMat, "CJ GATE\nPress C when ready");
-
-        // Decorative trees / ranch barrels
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 18; i++)
         {
-            float angle = i * Mathf.PI * 2f / 12f;
-            Vector3 pos = new Vector3(Mathf.Cos(angle) * 22f, 0, Mathf.Sin(angle) * 22f);
-            CreateDecorTree(pos);
+            float angle = i * Mathf.PI * 2f / 18f;
+            float radius = 34f + (i % 3) * 3f;
+            CreateDecorativeTree(new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius));
         }
 
-        CreateBarrel(new Vector3(-3, 0.7f, 2));
-        CreateBarrel(new Vector3(-4.2f, 0.7f, 2.6f));
-        CreateBarrel(new Vector3(3.5f, 0.7f, -2.5f));
+        CreateBarrel(new Vector3(-3f, 0.7f, 2f));
+        CreateBarrel(new Vector3(-4.3f, 0.7f, 2.8f));
+        CreateBarrel(new Vector3(3.7f, 0.7f, -2.7f));
     }
 
-    private GameObject CreateStation(string name, Vector3 pos, Material mat, string label)
+    private GameObject CreatePrimitive(PrimitiveType type, string objectName, Vector3 position,
+        Vector3 scale, Material material, Transform parent = null)
     {
-        GameObject station = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        station.name = name;
-        station.transform.position = pos;
-        station.transform.localScale = new Vector3(2.4f, 1f, 2.4f);
-        station.GetComponent<Renderer>().material = mat;
-        spawnedObjects.Add(station);
+        GameObject obj = GameObject.CreatePrimitive(type);
+        obj.name = objectName;
+        obj.transform.position = position;
+        obj.transform.localScale = scale;
+        if (parent != null) obj.transform.SetParent(parent, true);
+        Renderer renderer = obj.GetComponent<Renderer>();
+        if (renderer != null) renderer.material = material;
+        spawnedObjects.Add(obj);
+        return obj;
+    }
 
-        CreateLabel(label, pos + new Vector3(0, 2.4f, 0));
+    private GameObject CreateStation(string stationName, Vector3 position, Material material, string label)
+    {
+        GameObject station = CreatePrimitive(PrimitiveType.Cube, stationName, position,
+            new Vector3(2.5f, 1f, 2.5f), material);
+        CreateLabel(label, position + new Vector3(0f, 2.5f, 0f));
         return station;
     }
 
-    private void CreateDecorTree(Vector3 pos)
+    private void CreateDecorativeTree(Vector3 position)
     {
         GameObject root = new GameObject("Background Tree");
-        root.transform.position = pos;
-
-        GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        trunk.transform.parent = root.transform;
-        trunk.transform.localPosition = new Vector3(0, 1, 0);
-        trunk.transform.localScale = new Vector3(0.5f, 1.3f, 0.5f);
-        trunk.GetComponent<Renderer>().material = brownMat;
-
-        GameObject top = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        top.transform.parent = root.transform;
-        top.transform.localPosition = new Vector3(0, 2.8f, 0);
-        top.transform.localScale = new Vector3(2.2f, 2.2f, 2.2f);
-        top.GetComponent<Renderer>().material = greenMat;
-
+        root.transform.position = position;
         spawnedObjects.Add(root);
+
+        CreatePrimitive(PrimitiveType.Cylinder, "Trunk", position + new Vector3(0f, 1.2f, 0f),
+            new Vector3(0.5f, 1.4f, 0.5f), brownMaterial, root.transform);
+        CreatePrimitive(PrimitiveType.Sphere, "Leaves", position + new Vector3(0f, 3.2f, 0f),
+            new Vector3(2.4f, 2.4f, 2.4f), greenMaterial, root.transform);
     }
 
-    private void CreateBarrel(Vector3 pos)
+    private void CreateBarrel(Vector3 position)
     {
-        GameObject barrel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        barrel.name = "Ranch Barrel";
-        barrel.transform.position = pos;
-        barrel.transform.localScale = new Vector3(0.8f, 0.7f, 0.8f);
-        barrel.GetComponent<Renderer>().material = ranchMat;
-        spawnedObjects.Add(barrel);
+        CreatePrimitive(PrimitiveType.Cylinder, "Ranch Barrel", position,
+            new Vector3(0.8f, 0.7f, 0.8f), ranchMaterial);
     }
 
-    private void CreateLabel(string text, Vector3 pos)
+    private void CreateLabel(string text, Vector3 position)
     {
-        GameObject labelObj = new GameObject("Label");
-        labelObj.transform.position = pos;
-
-        TextMesh mesh = labelObj.AddComponent<TextMesh>();
-        mesh.text = text;
-        mesh.fontSize = 42;
-        mesh.characterSize = 0.12f;
-        mesh.anchor = TextAnchor.MiddleCenter;
-        mesh.alignment = TextAlignment.Center;
-        mesh.color = Color.black;
-
-        LabelBillboard billboard = labelObj.AddComponent<LabelBillboard>();
-
-        spawnedObjects.Add(labelObj);
+        GameObject labelObject = new GameObject("World Label");
+        labelObject.transform.position = position;
+        TextMesh textMesh = labelObject.AddComponent<TextMesh>();
+        textMesh.text = text;
+        textMesh.fontSize = 42;
+        textMesh.characterSize = 0.115f;
+        textMesh.anchor = TextAnchor.MiddleCenter;
+        textMesh.alignment = TextAlignment.Center;
+        textMesh.color = Color.black;
+        labelObject.AddComponent<LabelBillboard>();
+        spawnedObjects.Add(labelObject);
     }
 
     private void CreatePlayer()
     {
         player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         player.name = "Player";
-        player.transform.position = new Vector3(0, 1.2f, -3);
-        player.GetComponent<Renderer>().material = blueMat;
+        player.transform.position = new Vector3(0f, 1.2f, -3f);
+        player.GetComponent<Renderer>().material = blueMaterial;
+
+        CapsuleCollider capsuleCollider = player.GetComponent<CapsuleCollider>();
+        if (capsuleCollider != null) Destroy(capsuleCollider);
 
         controller = player.AddComponent<CharacterController>();
         controller.height = 2f;
         controller.radius = 0.45f;
-        controller.center = new Vector3(0, 0, 0);
+        controller.center = Vector3.zero;
 
-        // Remove capsule collider because CharacterController handles collision.
-        CapsuleCollider capsule = player.GetComponent<CapsuleCollider>();
-        if (capsule != null) Destroy(capsule);
-
-        mainCam = Camera.main;
-        if (mainCam == null)
+        mainCamera = Camera.main;
+        if (mainCamera == null)
         {
-            GameObject camObj = new GameObject("Main Camera");
-            mainCam = camObj.AddComponent<Camera>();
-            camObj.tag = "MainCamera";
+            GameObject cameraObject = new GameObject("Main Camera");
+            mainCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.tag = "MainCamera";
         }
-
-        mainCam.transform.position = player.transform.position + new Vector3(0, 5, -7);
-        mainCam.transform.LookAt(player.transform.position + Vector3.up);
     }
 
     private void CreateRanchSword()
@@ -356,111 +409,94 @@ public class RanchSimulatorFullGame : MonoBehaviour
         ranchSwordPivot.transform.localPosition = new Vector3(0.72f, 0.45f, 0.55f);
 
         swordRestRotation = Quaternion.Euler(12f, 0f, -35f);
-        swordAttackRotation = Quaternion.Euler(12f, 0f, 75f);
+        swordAttackRotation = Quaternion.Euler(12f, 0f, 78f);
         ranchSwordPivot.transform.localRotation = swordRestRotation;
 
-        GameObject handle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        handle.name = "Ranch Sword Handle";
-        handle.transform.SetParent(ranchSwordPivot.transform);
+        GameObject handle = CreatePrimitive(PrimitiveType.Cylinder, "Sword Handle", Vector3.zero,
+            new Vector3(0.12f, 0.35f, 0.12f), brownMaterial, ranchSwordPivot.transform);
         handle.transform.localPosition = new Vector3(0f, 0.25f, 0f);
-        handle.transform.localRotation = Quaternion.identity;
-        handle.transform.localScale = new Vector3(0.12f, 0.35f, 0.12f);
-        handle.GetComponent<Renderer>().material = brownMat;
-        Destroy(handle.GetComponent<Collider>());
+        RemoveCollider(handle);
 
-        GameObject guard = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        guard.name = "Ranch Sword Guard";
-        guard.transform.SetParent(ranchSwordPivot.transform);
+        GameObject guard = CreatePrimitive(PrimitiveType.Cube, "Sword Guard", Vector3.zero,
+            new Vector3(0.75f, 0.12f, 0.16f), yellowMaterial, ranchSwordPivot.transform);
         guard.transform.localPosition = new Vector3(0f, 0.65f, 0f);
-        guard.transform.localRotation = Quaternion.identity;
-        guard.transform.localScale = new Vector3(0.75f, 0.12f, 0.16f);
-        guard.GetComponent<Renderer>().material = yellowMat;
-        Destroy(guard.GetComponent<Collider>());
+        RemoveCollider(guard);
 
-        GameObject blade = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        blade.name = "Ranch Sword Blade";
-        blade.transform.SetParent(ranchSwordPivot.transform);
+        GameObject blade = CreatePrimitive(PrimitiveType.Cube, "Sword Blade", Vector3.zero,
+            new Vector3(0.24f, 1.7f, 0.10f), brownMaterial, ranchSwordPivot.transform);
         blade.transform.localPosition = new Vector3(0f, 1.55f, 0f);
-        blade.transform.localRotation = Quaternion.identity;
-        blade.transform.localScale = new Vector3(0.24f, 1.7f, 0.10f);
-        blade.GetComponent<Renderer>().material = ranchMat;
-        Destroy(blade.GetComponent<Collider>());
+        swordBladeRenderer = blade.GetComponent<Renderer>();
+        RemoveCollider(blade);
+        UpdateSwordAppearance();
     }
 
     private void CreateDrew()
     {
         drew = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         drew.name = "Drew";
-        drew.transform.position = new Vector3(-6, 1.2f, -6);
+        drew.transform.position = new Vector3(-6f, 1.2f, -6f);
         drew.transform.localScale = new Vector3(0.85f, 0.85f, 0.85f);
-        drew.GetComponent<Renderer>().material = whiteMat;
+        drew.GetComponent<Renderer>().material = whiteMaterial;
+        RemoveCollider(drew);
 
-        GameObject hat = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        hat.name = "Drew Hat";
-        hat.transform.parent = drew.transform;
-        hat.transform.localPosition = new Vector3(0, 1.25f, 0);
-        hat.transform.localScale = new Vector3(0.85f, 0.12f, 0.85f);
-        hat.GetComponent<Renderer>().material = yellowMat;
+        GameObject hat = CreatePrimitive(PrimitiveType.Cylinder, "Drew Hat", Vector3.zero,
+            new Vector3(0.85f, 0.12f, 0.85f), yellowMaterial, drew.transform);
+        hat.transform.localPosition = new Vector3(0f, 1.25f, 0f);
+        RemoveCollider(hat);
 
-        drewTarget = ranchTree.transform.position;
         drew.SetActive(false);
+    }
 
-        CreateLabel("DREW\nhelper NPC", new Vector3(-6, 2.8f, -6));
+    private void RemoveCollider(GameObject obj)
+    {
+        Collider collider = obj.GetComponent<Collider>();
+        if (collider != null) Destroy(collider);
     }
 
     // ============================================================
-    // PLAYER / CAMERA
+    // PLAYER MOVEMENT AND CAMERA
     // ============================================================
 
     private void HandleMovement()
     {
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+        if (player == null || controller == null) return;
+
+        float mouseX = RanchInput.MouseX * mouseSensitivity;
+        float mouseY = RanchInput.MouseY * mouseSensitivity;
 
         player.transform.Rotate(Vector3.up * mouseX);
+        cameraPitch = Mathf.Clamp(cameraPitch - mouseY, -8f, 58f);
 
-        cameraPitch -= mouseY;
-        cameraPitch = Mathf.Clamp(cameraPitch, -5f, 55f);
+        Vector3 move = player.transform.right * RanchInput.MoveX + player.transform.forward * RanchInput.MoveY;
+        if (move.sqrMagnitude > 1f) move.Normalize();
 
-        float x = Input.GetAxis("Horizontal");
-        float z = Input.GetAxis("Vertical");
-
-        Vector3 move = player.transform.right * x + player.transform.forward * z;
-        if (move.magnitude > 1f) move.Normalize();
-
-        if (controller.isGrounded && yVelocity < 0f)
-        {
-            yVelocity = -2f;
-        }
-
-        yVelocity += gravity * Time.deltaTime;
+        if (controller.isGrounded && verticalVelocity < 0f) verticalVelocity = -2f;
+        verticalVelocity += Gravity * Time.deltaTime;
 
         Vector3 velocity = move * moveSpeed;
-        velocity.y = yVelocity;
-
+        velocity.y = verticalVelocity;
         controller.Move(velocity * Time.deltaTime);
     }
 
     private void UpdateCamera()
     {
-        if (mainCam == null || player == null) return;
+        if (mainCamera == null || player == null) return;
 
-        Quaternion camRotation = Quaternion.Euler(cameraPitch, player.transform.eulerAngles.y, 0);
-        Vector3 offset = camRotation * new Vector3(0, 3.8f, -7f);
-
-        mainCam.transform.position = player.transform.position + offset;
-        mainCam.transform.LookAt(player.transform.position + new Vector3(0, 1.4f, 0));
+        Quaternion rotation = Quaternion.Euler(cameraPitch, player.transform.eulerAngles.y, 0f);
+        Vector3 offset = rotation * new Vector3(0f, 4.2f, -8f);
+        mainCamera.transform.position = player.transform.position + offset;
+        mainCamera.transform.LookAt(player.transform.position + new Vector3(0f, 1.4f, 0f));
     }
 
     private void HandleCursor()
     {
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (RanchInput.Down(RanchAction.Escape))
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
 
-        if (Input.GetMouseButtonDown(0))
+        if (RanchInput.AttackDown)
         {
             LockCursor();
         }
@@ -473,45 +509,38 @@ public class RanchSimulatorFullGame : MonoBehaviour
     }
 
     // ============================================================
-    // COMBAT / RANCH SWORD
+    // COMBAT
     // ============================================================
 
     private void HandleCombat()
     {
         swordCooldownTimer = Mathf.Max(0f, swordCooldownTimer - Time.deltaTime);
-        hurtMessageCooldown = Mathf.Max(0f, hurtMessageCooldown - Time.deltaTime);
+        invulnerabilityTimer = Mathf.Max(0f, invulnerabilityTimer - Time.deltaTime);
 
         if (swordAnimationTimer > 0f)
         {
             swordAnimationTimer -= Time.deltaTime;
-            float progress = 1f - Mathf.Clamp01(swordAnimationTimer / swordAnimationLength);
+            float progress = 1f - Mathf.Clamp01(swordAnimationTimer / SwordAnimationLength);
             float swing = Mathf.Sin(progress * Mathf.PI);
-            ranchSwordPivot.transform.localRotation = Quaternion.Slerp(
-                swordRestRotation,
-                swordAttackRotation,
-                swing
-            );
+            ranchSwordPivot.transform.localRotation = Quaternion.Slerp(swordRestRotation, swordAttackRotation, swing);
         }
         else if (ranchSwordPivot != null)
         {
             ranchSwordPivot.transform.localRotation = swordRestRotation;
         }
 
-        if (Cursor.lockState == CursorLockMode.Locked &&
-            Input.GetMouseButtonDown(0) &&
-            swordCooldownTimer <= 0f)
+        if (Cursor.lockState == CursorLockMode.Locked && RanchInput.AttackDown && swordCooldownTimer <= 0f)
         {
-            SwingRanchSword();
+            SwingSword();
         }
     }
 
-    private void SwingRanchSword()
+    private void SwingSword()
     {
-        swordCooldownTimer = swordCooldown;
-        swordAnimationTimer = swordAnimationLength;
-
-        float damage = swordBaseDamage + bottleTier * 5f;
-        int enemiesHit = 0;
+        swordCooldownTimer = SwordCooldown;
+        swordAnimationTimer = SwordAnimationLength;
+        float damage = swordDamages[swordTier];
+        int hitCount = 0;
 
         for (int i = activeEnemies.Count - 1; i >= 0; i--)
         {
@@ -522,23 +551,21 @@ public class RanchSimulatorFullGame : MonoBehaviour
                 continue;
             }
 
-            Vector3 toEnemy = enemy.transform.position - player.transform.position;
-            toEnemy.y = 0f;
+            Vector3 direction = enemy.transform.position - player.transform.position;
+            direction.y = 0f;
+            if (direction.magnitude > SwordRange) continue;
 
-            if (toEnemy.magnitude <= swordRange)
+            float facing = Vector3.Dot(player.transform.forward, direction.normalized);
+            if (facing >= -0.12f)
             {
-                float facing = Vector3.Dot(player.transform.forward, toEnemy.normalized);
-                if (facing >= -0.15f)
-                {
-                    enemy.TakeDamage(damage);
-                    enemiesHit++;
-                }
+                enemy.TakeDamage(damage);
+                hitCount++;
             }
         }
 
-        if (enemiesHit > 0)
+        if (hitCount > 0)
         {
-            LogEvent("Ranch Sword hit " + enemiesHit + " enemy(s) for " + damage.ToString("F0") + " damage.");
+            LogEvent(swordNames[swordTier] + " hit " + hitCount + " enemy(s) for " + damage.ToString("F0") + " damage.");
         }
     }
 
@@ -547,348 +574,585 @@ public class RanchSimulatorFullGame : MonoBehaviour
         return player != null ? player.transform : null;
     }
 
-    public void DamagePlayer(float amount)
+    public Vector3 GetHarvesterTargetPosition()
     {
-        if (cjDefeated || playerHealth <= 0f) return;
+        return warehouseBuilt ? new Vector3(-18f, 0f, -5f) : bottleStation.transform.position;
+    }
 
-        playerHealth = Mathf.Max(0f, playerHealth - amount);
+    public void DamagePlayer(float rawDamage, string attackerName)
+    {
+        if (cjDefeated || invulnerabilityTimer > 0f || playerHealth <= 0f) return;
 
-        if (hurtMessageCooldown <= 0f)
-        {
-            LogEvent("A Ranch Raider hit you. Health: " + playerHealth.ToString("F0") + "/" + playerMaxHealth.ToString("F0"));
-            hurtMessageCooldown = 1.2f;
-        }
+        float reduction = 1f;
+        if (fortressBuilt) reduction *= 0.55f;
+        if (citadelBuilt) reduction *= 0.75f;
+        float damage = Mathf.Max(1f, rawDamage * reduction);
 
-        if (playerHealth <= 0f)
-        {
-            RespawnPlayer();
-        }
+        playerHealth = Mathf.Max(0f, playerHealth - damage);
+        invulnerabilityTimer = 0.18f;
+        LogEvent(attackerName + " hit you for " + damage.ToString("F0") + ".");
+
+        if (playerHealth <= 0f) RespawnPlayer();
     }
 
     private void RespawnPlayer()
     {
         playerHealth = playerMaxHealth;
-        money *= 0.75f;
-        ranch *= 0.5f;
+        money *= 0.80d;
+        ranch *= 0.50d;
 
         if (controller != null) controller.enabled = false;
         player.transform.position = new Vector3(0f, 1.2f, -3f);
         if (controller != null) controller.enabled = true;
 
-        for (int i = activeEnemies.Count - 1; i >= 0; i--)
-        {
-            if (activeEnemies[i] != null)
-            {
-                Destroy(activeEnemies[i].gameObject);
-            }
-        }
-        activeEnemies.Clear();
+        ClearAllEnemies();
 
-        LogEvent("You were overwhelmed and respawned. You kept 75% of your money and half your raw Ranch.");
+        if (finalBattleActive)
+        {
+            finalBattleActive = false;
+            finalBattlePhase = 0;
+            LogEvent("CJ defeated you. The Citadel survives, but the final battle must be restarted.");
+        }
+        else
+        {
+            waveTimer = WaveInterval;
+            LogEvent("You respawned. You kept 80% of your money and half your raw Ranch.");
+        }
     }
 
     // ============================================================
-    // INTERACTION
+    // INTERACTIONS
     // ============================================================
 
-    private void UpdatePromptsAndInteractions()
+    private void UpdateInteractions()
     {
-        currentPrompt = "";
+        currentPrompt = string.Empty;
 
         if (Near(ranchTree))
         {
-            currentPrompt = "Hold E: Extract Ranch from the Ranch Tree";
-
-            if (Input.GetKey(KeyCode.E))
-            {
-                ExtractRanch(Time.deltaTime);
-            }
+            currentPrompt = "Hold E: extract " + ranchTypeNames[ranchTypeTier];
+            if (RanchInput.Held(RanchAction.Extract)) ExtractRanch(Time.deltaTime);
         }
 
         if (Near(bottleStation))
         {
-            currentPrompt = "Press B: Bottle Ranch";
-
-            if (Input.GetKeyDown(KeyCode.B))
-            {
-                BottleRanch();
-            }
+            currentPrompt = "B: bottle one | V: bottle all Ranch";
+            if (RanchInput.Down(RanchAction.BottleOne)) BottleOne();
+            if (RanchInput.Down(RanchAction.BottleAll)) BottleAll();
         }
 
         if (Near(sellStation))
         {
-            currentPrompt = "Press F: Sell Bottle | Shift + F: Sell All";
-
-            if (Input.GetKeyDown(KeyCode.F))
+            currentPrompt = "F: sell one | Shift+F: sell every bottle";
+            if (RanchInput.Down(RanchAction.Sell))
             {
-                if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
-                {
-                    SellAllBottles();
-                }
-                else
-                {
-                    SellOneBottle();
-                }
+                if (RanchInput.ShiftHeld) SellAllBottles();
+                else SellBottles(1);
             }
         }
 
-        if (Near(upgradeStation))
+        if (Near(bottleUpgradeStation))
         {
-            currentPrompt = "Press U: Upgrade Bottle Size";
-
-            if (Input.GetKeyDown(KeyCode.U))
-            {
-                UpgradeBottle();
-            }
+            currentPrompt = "U: upgrade bottle size";
+            if (RanchInput.Down(RanchAction.UpgradeBottle)) UpgradeBottle();
         }
 
         if (Near(drewStation))
         {
-            currentPrompt = "Press G: Hire / Upgrade Drew";
+            currentPrompt = "G: hire or upgrade Drew";
+            if (RanchInput.Down(RanchAction.UpgradeDrew)) UpgradeDrew();
+        }
 
-            if (Input.GetKeyDown(KeyCode.G))
-            {
-                UpgradeDrew();
-            }
+        if (Near(swordStation))
+        {
+            currentPrompt = "K: upgrade Ranch Sword";
+            if (RanchInput.Down(RanchAction.UpgradeSword)) UpgradeSword();
+        }
+
+        if (Near(buildYard))
+        {
+            currentPrompt = "H: construct the next endgame building";
+            if (RanchInput.Down(RanchAction.Build)) BuyNextBuilding();
+        }
+
+        if (Near(laboratoryStation))
+        {
+            currentPrompt = laboratoryBuilt
+                ? "J: research a stronger Ranch type"
+                : "Build the Ranch Laboratory first";
+            if (RanchInput.Down(RanchAction.Research)) ResearchRanch();
         }
 
         if (Near(cjGate))
         {
-            if (cjBattleUnlocked)
-            {
-                currentPrompt = "Press C: Challenge CJ, the Ultimate Ranchenator";
-
-                if (Input.GetKeyDown(KeyCode.C))
-                {
-                    ChallengeCJ();
-                }
-            }
-            else
-            {
-                currentPrompt = "CJ Gate: Sell more Ranch before challenging CJ.";
-            }
+            currentPrompt = citadelBuilt
+                ? "C: begin CJ's three-phase final battle"
+                : "CJ Gate locked: build the Ranch Citadel";
+            if (RanchInput.Down(RanchAction.ChallengeCJ)) StartFinalBattle();
         }
     }
 
     private bool Near(GameObject obj)
     {
-        if (obj == null || player == null) return false;
-        return Vector3.Distance(player.transform.position, obj.transform.position) <= interactRange;
+        return obj != null && player != null &&
+               Vector3.Distance(player.transform.position, obj.transform.position) <= InteractionRange;
     }
 
     private void ExtractRanch(float deltaTime)
     {
-        float amount = ranchPerSecond * extractionMultiplier * deltaTime;
-        ranch += amount;
-
-        if (Random.value < 0.015f)
-        {
-            LogEvent("The Ranch Tree releases a creamy burst of raw Ranch.");
-        }
+        double amount = ranchPerSecond * extractionMultiplier * deltaTime;
+        AddRanch(amount);
     }
 
-    private bool BottleRanch()
+    private void BottleOne()
     {
-        int cap = bottleCaps[bottleTier];
-
-        if (ranch >= cap)
+        long made = BottleQuantity(1);
+        if (made == 0)
         {
-            ranch -= cap;
-            bottles += 1;
-            LogEvent("Bottled " + cap + " Ranch into a " + bottleNames[bottleTier] + ".");
-            return true;
+            LogEvent("Not enough Ranch or storage space for one " + bottleNames[bottleTier] + ".");
         }
-
-        LogEvent("Not enough Ranch to fill a " + bottleNames[bottleTier] + ". Need " + cap + ".");
-        return false;
+        else
+        {
+            LogEvent("Filled one " + bottleNames[bottleTier] + ".");
+        }
     }
 
-    private void SellOneBottle()
+    public void BottleAll()
+    {
+        long made = BottleQuantity(long.MaxValue);
+        if (made <= 0)
+        {
+            LogEvent("No Ranch could be bottled.");
+        }
+        else
+        {
+            LogEvent("Bottled all available Ranch: " + Compact(made) + " bottle(s).");
+        }
+    }
+
+    private long BottleQuantity(long requestedMaximum)
+    {
+        int capacity = bottleCaps[bottleTier];
+        double availableDouble = Math.Floor(ranch / capacity);
+        if (availableDouble <= 0d) return 0;
+
+        long available = availableDouble >= long.MaxValue ? long.MaxValue : (long)availableDouble;
+        long storageRoom = GetBottleStorageCapacity() - bottles;
+        if (storageRoom <= 0) return 0;
+
+        long count = Math.Min(available, Math.Min(requestedMaximum, storageRoom));
+        if (count <= 0) return 0;
+
+        ranch -= count * (double)capacity;
+        bottles += count;
+        return count;
+    }
+
+    private void SellBottles(long count)
     {
         if (bottles <= 0)
         {
-            LogEvent("No bottled Ranch to sell.");
+            LogEvent("You have no bottled Ranch to sell.");
             return;
         }
 
-        bottles -= 1;
-        SellBottleReward(1);
+        long sold = Math.Min(count, bottles);
+        bottles -= sold;
+        bottlesSold = SafeAddLong(bottlesSold, sold);
+
+        double baseValue = bottleCaps[bottleTier] * 5d;
+        double bottleTierBonus = 1d + bottleTier * 0.22d;
+        double value = sold * baseValue * bottleTierBonus * ranchValueMultipliers[ranchTypeTier];
+        money += value;
+
+        LogEvent("Sold " + Compact(sold) + " bottle(s) of " + ranchTypeNames[ranchTypeTier] +
+                 " for $" + Compact(value) + ".");
     }
 
     private void SellAllBottles()
     {
-        if (bottles <= 0)
-        {
-            LogEvent("No bottled Ranch to sell.");
-            return;
-        }
-
-        int amount = bottles;
-        bottles = 0;
-        SellBottleReward(amount);
-    }
-
-    private void SellBottleReward(int amount)
-    {
-        int cap = bottleCaps[bottleTier];
-
-        float basePrice = cap * 5f;
-        float bottleBonus = 1f + bottleTier * 0.22f;
-        float drewReputationBonus = 1f + drewLevel * 0.03f;
-
-        float reward = amount * basePrice * bottleBonus * drewReputationBonus;
-
-        money += reward;
-        bottlesSold += amount;
-
-        cjHeat += amount * cap;
-
-        LogEvent("Sold " + amount + " bottle(s) for $" + reward.ToString("F0") + ".");
-
-        if (bottlesSold == 1)
-        {
-            LogEvent("Your first bottle sells. A local McMinnville customer says, 'This is alarmingly good.'");
-        }
+        SellBottles(bottles);
     }
 
     private void UpgradeBottle()
     {
         if (bottleTier >= bottleNames.Length - 1)
         {
-            LogEvent("Bottle size is maxed. You possess the Ranchenator Vessel.");
+            LogEvent("Bottle size is already maxed: Ranchenator Vessel.");
             return;
         }
 
-        float cost = GetBottleUpgradeCost();
-
-        if (money >= cost)
+        double cost = GetBottleUpgradeCost();
+        if (money < cost)
         {
-            money -= cost;
-            bottleTier += 1;
-            LogEvent("Bottle upgraded to " + bottleNames[bottleTier] + ". Capacity: " + bottleCaps[bottleTier] + " Ranch.");
+            LogEvent("Need $" + Compact(cost) + " for the next bottle upgrade.");
+            return;
+        }
 
-            // Bigger bottles also impress the market.
-            cjHeat += 5 * bottleTier;
-        }
-        else
-        {
-            LogEvent("Need $" + cost.ToString("F0") + " to upgrade bottles.");
-        }
+        money -= cost;
+        bottleTier++;
+        LogEvent("Bottle upgraded to " + bottleNames[bottleTier] + " (capacity " + bottleCaps[bottleTier] + ").");
     }
 
-    private float GetBottleUpgradeCost()
+    private double GetBottleUpgradeCost()
     {
-        return 80f * (bottleTier + 1) * (bottleTier + 1);
+        return 80d * (bottleTier + 1d) * (bottleTier + 1d) * Math.Pow(2d, bottleTier);
     }
+
+    private void UpgradeSword()
+    {
+        if (swordTier >= swordNames.Length - 1)
+        {
+            LogEvent("You already wield the CJ Slayer.");
+            return;
+        }
+
+        double cost = swordUpgradeCosts[swordTier + 1];
+        if (money < cost)
+        {
+            LogEvent("Need $" + Compact(cost) + " for " + swordNames[swordTier + 1] + ".");
+            return;
+        }
+
+        money -= cost;
+        swordTier++;
+        UpdateSwordAppearance();
+        LogEvent("Sword upgraded to " + swordNames[swordTier] + " — " + swordDamages[swordTier].ToString("F0") + " damage.");
+    }
+
+    private void UpdateSwordAppearance()
+    {
+        if (swordBladeRenderer == null) return;
+
+        Material material = brownMaterial;
+        if (swordTier == 1) material = grayMaterial;
+        else if (swordTier == 2) material = whiteMaterial;
+        else if (swordTier == 3) material = cyanMaterial;
+        else if (swordTier == 4) material = purpleMaterial;
+        else if (swordTier == 5) material = redMaterial;
+        swordBladeRenderer.material = material;
+    }
+
+    // ============================================================
+    // DREW SYSTEM
+    // ============================================================
 
     private void UpgradeDrew()
     {
         if (!drewUnlocked)
         {
-            if (money >= drewUpgradeCost)
+            double hireCost = 100d;
+            if (money < hireCost)
             {
-                money -= drewUpgradeCost;
-                drewUnlocked = true;
-                drewLevel = 1;
-                drew.SetActive(true);
-                LogEvent("Drew hired. He looks confused but enthusiastic.");
-            }
-            else
-            {
-                LogEvent("Need $" + drewUpgradeCost.ToString("F0") + " to hire Drew.");
+                LogEvent("Need $100 to hire Drew.");
+                return;
             }
 
+            money -= hireCost;
+            drewUnlocked = true;
+            drewLevel = 1;
+            drew.SetActive(true);
+            LogEvent("Drew hired. Level 1 Drew can perform 2 units of work per cycle.");
             return;
         }
 
-        if (drewLevel >= 10)
+        if (drewLevel >= 50)
         {
-            LogEvent("Drew is max level. He has achieved Advanced Ranching.");
+            LogEvent("Drew is Level 50: ASCENDED DREW.");
             return;
         }
 
-        float cost = GetDrewUpgradeCost();
+        double cost = GetDrewUpgradeCost();
+        if (money < cost)
+        {
+            LogEvent("Need $" + Compact(cost) + " to upgrade Drew.");
+            return;
+        }
 
-        if (money >= cost)
-        {
-            money -= cost;
-            drewLevel += 1;
-            drewWorkInterval = Mathf.Max(1.2f, drewWorkInterval - 0.45f);
-            LogEvent("Drew upgraded to Level " + drewLevel + ". Drew understands Ranch slightly better.");
-        }
-        else
-        {
-            LogEvent("Need $" + cost.ToString("F0") + " to upgrade Drew.");
-        }
+        money -= cost;
+        drewLevel++;
+        drewWorkInterval = Mathf.Max(1.25f, 6f - drewLevel * 0.10f);
+
+        if (drewLevel >= 20) EnsureMiniDrews();
+
+        string milestone = GetDrewMilestoneMessage(drewLevel);
+        LogEvent("Drew reached Level " + drewLevel + ". Work = 2^" + drewLevel + ". " + milestone);
     }
 
-    private float GetDrewUpgradeCost()
+    private double GetDrewUpgradeCost()
     {
-        return drewUpgradeCost + drewLevel * drewLevel * 85f;
+        return drewUpgradeBaseCost * Math.Pow(1.58d, drewLevel);
     }
 
-    // ============================================================
-    // DREW
-    // ============================================================
+    private string GetDrewMilestoneMessage(int level)
+    {
+        if (level == 5) return "Automatic bottling unlocked.";
+        if (level == 10) return "Automatic selling unlocked.";
+        if (level == 15) return "Automatic bottle upgrades unlocked.";
+        if (level == 20) return "Mini-Drews unlocked.";
+        if (level == 25) return "Drew now produces Ranch by himself.";
+        if (level == 50) return "ASCENDED DREW produces absurd amounts of Ranch.";
+        return string.Empty;
+    }
 
     private void UpdateDrew()
     {
         if (!drewUnlocked || drew == null) return;
 
         drewTimer += Time.deltaTime;
-
         if (drewTimer >= drewWorkInterval)
         {
             drewTimer = 0f;
-            DrewWork();
+            PerformDrewWork();
         }
 
-        // Simple visual movement.
         Vector3 target = drewMovingToTree ? ranchTree.transform.position : bottleStation.transform.position;
         target.y = drew.transform.position.y;
+        drew.transform.position = Vector3.MoveTowards(drew.transform.position, target,
+            Time.deltaTime * (2f + drewLevel * 0.025f));
 
-        drew.transform.position = Vector3.MoveTowards(
-            drew.transform.position,
-            target,
-            Time.deltaTime * (1.8f + drewLevel * 0.15f)
-        );
+        Vector3 direction = target - drew.transform.position;
+        if (direction.sqrMagnitude > 0.01f) drew.transform.rotation = Quaternion.LookRotation(direction);
+        if (Vector3.Distance(drew.transform.position, target) < 0.35f) drewMovingToTree = !drewMovingToTree;
 
-        Vector3 dir = target - drew.transform.position;
-        if (dir.sqrMagnitude > 0.01f)
-        {
-            drew.transform.rotation = Quaternion.LookRotation(dir);
-        }
-
-        if (Vector3.Distance(drew.transform.position, target) < 0.3f)
-        {
-            drewMovingToTree = !drewMovingToTree;
-        }
+        UpdateMiniDrews();
     }
 
-    private void DrewWork()
+    private void PerformDrewWork()
     {
-        float drewRanch = drewLevel * 0.75f;
-        ranch += drewRanch;
+        double workAmount = Math.Pow(2d, Math.Min(drewLevel, 50));
+        if (drewLevel >= 50) workAmount *= 1000d;
 
-        int bottleAttempts = Mathf.Max(1, drewLevel / 2);
+        // Drew extracts enough Ranch for the requested number of bottles.
+        double extracted = workAmount * bottleCaps[bottleTier];
+        AddRanch(extracted);
 
-        int made = 0;
-        for (int i = 0; i < bottleAttempts; i++)
+        long requestedBottles = workAmount >= long.MaxValue ? long.MaxValue : (long)Math.Floor(workAmount);
+
+        if (drewLevel >= 5)
         {
-            if (BottleRanch())
+            BottleQuantity(requestedBottles);
+        }
+
+        if (drewLevel >= 10 && bottles > 0)
+        {
+            SellAllBottles();
+        }
+
+        if (drewLevel >= 15)
+        {
+            while (bottleTier < bottleNames.Length - 1 && money >= GetBottleUpgradeCost())
             {
-                made++;
+                money -= GetBottleUpgradeCost();
+                bottleTier++;
             }
         }
 
-        if (made > 0)
+        if (drewLevel >= 25)
         {
-            LogEvent("Drew extracted " + drewRanch.ToString("F1") + " Ranch and bottled " + made + " bottle(s).");
+            AddRanch(workAmount * bottleCaps[bottleTier] * 10d);
         }
-        else
+
+        if (drewLevel >= 50)
         {
-            LogEvent("Drew extracted " + drewRanch.ToString("F1") + " Ranch. He did not bottle anything useful.");
+            ranchTypeTier = Math.Max(ranchTypeTier, 5);
+            AddRanch(workAmount * bottleCaps[bottleTier] * 1000d);
         }
+
+        LogEvent("Drew completed " + Compact(workAmount) + " work. Level " + drewLevel + " Drew is accelerating the empire.");
+    }
+
+    private void EnsureMiniDrews()
+    {
+        int desired = Mathf.Clamp(1 + (drewLevel - 20) / 5, 1, 8);
+        while (miniDrews.Count < desired)
+        {
+            int index = miniDrews.Count;
+            GameObject mini = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            mini.name = "Mini-Drew " + (index + 1);
+            mini.transform.localScale = Vector3.one * 0.38f;
+            mini.GetComponent<Renderer>().material = cyanMaterial;
+            RemoveCollider(mini);
+            miniDrews.Add(mini);
+        }
+    }
+
+    private void UpdateMiniDrews()
+    {
+        if (drewLevel < 20) return;
+        EnsureMiniDrews();
+
+        for (int i = 0; i < miniDrews.Count; i++)
+        {
+            GameObject mini = miniDrews[i];
+            if (mini == null) continue;
+            float angle = Time.time * 1.2f + i * Mathf.PI * 2f / miniDrews.Count;
+            Vector3 orbit = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * (2.2f + i * 0.18f);
+            mini.transform.position = drew.transform.position + orbit + Vector3.up * 0.3f;
+        }
+
+        miniDrewAttackTimer += Time.deltaTime;
+        if (miniDrewAttackTimer < 1f) return;
+        miniDrewAttackTimer = 0f;
+
+        float damage = swordDamages[swordTier] * (0.25f + miniDrews.Count * 0.08f);
+        for (int i = 0; i < miniDrews.Count; i++)
+        {
+            RanchEnemy enemy = FindClosestEnemy(miniDrews[i].transform.position);
+            if (enemy != null) enemy.TakeDamage(damage);
+        }
+    }
+
+    // ============================================================
+    // BUILDINGS AND RANCH TYPES
+    // ============================================================
+
+    private void BuyNextBuilding()
+    {
+        if (nextBuildingIndex >= buildingNames.Length)
+        {
+            LogEvent("Every endgame building has been constructed.");
+            return;
+        }
+
+        double cost = buildingCosts[nextBuildingIndex];
+        if (money < cost)
+        {
+            LogEvent("Need $" + Compact(cost) + " to build the " + buildingNames[nextBuildingIndex] + ".");
+            return;
+        }
+
+        money -= cost;
+        string built = buildingNames[nextBuildingIndex];
+
+        if (nextBuildingIndex == 0)
+        {
+            factoryBuilt = true;
+            CreateBuildingModel("Ranch Factory", new Vector3(-18f, 2f, 4f), blueMaterial, new Vector3(7f, 4f, 6f));
+        }
+        else if (nextBuildingIndex == 1)
+        {
+            warehouseBuilt = true;
+            CreateBuildingModel("Ranch Warehouse", new Vector3(-18f, 2f, -5f), yellowMaterial, new Vector3(8f, 4f, 7f));
+        }
+        else if (nextBuildingIndex == 2)
+        {
+            laboratoryBuilt = true;
+            ranchTypeTier = Math.Max(ranchTypeTier, 1);
+            CreateBuildingModel("Ranch Laboratory", new Vector3(18f, 2f, 4f), purpleMaterial, new Vector3(7f, 4f, 6f));
+        }
+        else if (nextBuildingIndex == 3)
+        {
+            fortressBuilt = true;
+            playerMaxHealth += 500f;
+            playerHealth = playerMaxHealth;
+            CreateBuildingModel("Ranch Fortress", new Vector3(18f, 3f, -6f), grayMaterial, new Vector3(9f, 6f, 8f));
+        }
+        else if (nextBuildingIndex == 4)
+        {
+            citadelBuilt = true;
+            playerMaxHealth += 2500f;
+            playerHealth = playerMaxHealth;
+            CreateBuildingModel("Ranch Citadel", new Vector3(0f, 5f, 30f), cyanMaterial, new Vector3(14f, 10f, 12f));
+        }
+
+        nextBuildingIndex++;
+        LogEvent(built + " constructed.");
+    }
+
+    private void CreateBuildingModel(string buildingName, Vector3 position, Material material, Vector3 scale)
+    {
+        GameObject building = CreatePrimitive(PrimitiveType.Cube, buildingName, position, scale, material);
+        CreateLabel(buildingName.ToUpperInvariant(), position + new Vector3(0f, scale.y * 0.7f + 2f, 0f));
+
+        if (buildingName == "Ranch Fortress")
+        {
+            for (int i = -1; i <= 1; i += 2)
+            {
+                CreatePrimitive(PrimitiveType.Cylinder, "Fortress Tower", position + new Vector3(i * 4f, 4f, 0f),
+                    new Vector3(1.2f, 4f, 1.2f), darkRedMaterial, building.transform);
+            }
+        }
+    }
+
+    private void ResearchRanch()
+    {
+        if (!laboratoryBuilt)
+        {
+            LogEvent("Construct the Ranch Laboratory before researching advanced Ranch.");
+            return;
+        }
+
+        if (ranchTypeTier >= ranchTypeNames.Length - 1)
+        {
+            LogEvent("Divine Ranch is already unlocked.");
+            return;
+        }
+
+        int nextTier = ranchTypeTier + 1;
+        double cost = laboratoryResearchCosts[nextTier];
+        if (money < cost)
+        {
+            LogEvent("Need $" + Compact(cost) + " to research " + ranchTypeNames[nextTier] + ".");
+            return;
+        }
+
+        money -= cost;
+        ranchTypeTier = nextTier;
+        LogEvent(ranchTypeNames[ranchTypeTier] + " unlocked: " + ranchValueMultipliers[ranchTypeTier] + "x sale value.");
+    }
+
+    private void UpdateBuildings()
+    {
+        if (factoryBuilt)
+        {
+            factoryTimer += Time.deltaTime;
+            if (factoryTimer >= 1f)
+            {
+                factoryTimer = 0f;
+                long capacity = 100L * (bottleTier + 1L) * (bottleTier + 1L);
+                BottleQuantity(capacity);
+            }
+        }
+
+        if (fortressBuilt && activeEnemies.Count > 0)
+        {
+            fortressTimer += Time.deltaTime;
+            if (fortressTimer >= 0.75f)
+            {
+                fortressTimer = 0f;
+                int targets = citadelBuilt ? 5 : 2;
+                float damage = 500f + waveNumber * 100f + swordDamages[swordTier] * 0.4f;
+                for (int i = 0; i < targets; i++)
+                {
+                    RanchEnemy enemy = FindClosestEnemy(new Vector3(18f, 3f, -6f));
+                    if (enemy != null) enemy.TakeDamage(damage);
+                }
+            }
+        }
+    }
+
+    private double GetRanchStorageCapacity()
+    {
+        return warehouseBuilt ? 1e18d : 100000d;
+    }
+
+    private long GetBottleStorageCapacity()
+    {
+        return warehouseBuilt ? long.MaxValue : 100000L;
+    }
+
+    private void AddRanch(double amount)
+    {
+        if (amount <= 0d) return;
+        ranch = Math.Min(GetRanchStorageCapacity(), ranch + amount);
+    }
+
+    public double StealRanch(double requestedAmount)
+    {
+        double stolen = Math.Min(ranch, Math.Max(0d, requestedAmount));
+        ranch -= stolen;
+        return stolen;
     }
 
     // ============================================================
@@ -897,224 +1161,476 @@ public class RanchSimulatorFullGame : MonoBehaviour
 
     private void UpdateEnemyWaves()
     {
-        enemyWaveTimer += Time.deltaTime;
+        CleanEnemyList();
+        if (finalBattleActive) return;
 
-        if (Input.GetKeyDown(KeyCode.T))
+        waveTimer -= Time.deltaTime;
+        if (waveTimer <= 0f)
         {
-            SpawnEnemyWave(true);
-        }
-
-        if (enemyWaveTimer >= enemyWaveInterval)
-        {
-            enemyWaveTimer = 0f;
-            SpawnEnemyWave(false);
+            SpawnWave();
+            waveTimer = WaveInterval;
         }
     }
 
-    private void SpawnEnemyWave(bool testWave)
+    private void SpawnWave()
     {
-        enemyWaveNumber += 1;
-        int enemyCount = testWave ? 2 : Mathf.Min(3 + enemyWaveNumber, 12);
+        waveNumber++;
+        int enemyCount = baseEnemyCount + 2 * (waveNumber - 1);
+
+        float healthMultiplier = Mathf.Pow(HealthScalePerWave, waveNumber - 1);
+        float damageMultiplier = Mathf.Pow(DamageScalePerWave, waveNumber - 1);
+        float speedMultiplier = Mathf.Pow(SpeedScalePerWave, waveNumber - 1);
 
         for (int i = 0; i < enemyCount; i++)
         {
-            float angle = Random.Range(0f, Mathf.PI * 2f);
-            float radius = Random.Range(20f, 25f);
-            Vector3 spawnPosition = new Vector3(
-                Mathf.Cos(angle) * radius,
-                1.1f,
-                Mathf.Sin(angle) * radius
-            );
-
-            CreateEnemy(spawnPosition);
+            EnemyKind kind = ChooseEnemyKind(waveNumber, i);
+            Vector3 spawnPosition = GetEnemySpawnPosition(i, enemyCount, 40f + waveNumber * 0.4f);
+            SpawnEnemy(kind, spawnPosition, healthMultiplier, damageMultiplier, speedMultiplier, false);
         }
 
-        string waveType = testWave ? "Test wave" : "Five-minute wave";
-        LogEvent(waveType + " " + enemyWaveNumber + ": " + enemyCount + " Ranch Raiders are attacking!");
+        if (waveNumber >= 20)
+        {
+            SpawnEnemy(EnemyKind.UltimateRanchBeast, GetEnemySpawnPosition(enemyCount, enemyCount + 1, 44f),
+                healthMultiplier, damageMultiplier, speedMultiplier, false);
+        }
+
+        LogEvent("WAVE " + waveNumber + " ARRIVED: " + enemyCount +
+                 (waveNumber >= 20 ? "+ boss" : string.Empty) + " enemies. Scaling is now brutal.");
     }
 
-    private void CreateEnemy(Vector3 position)
+    private EnemyKind ChooseEnemyKind(int wave, int index)
     {
-        GameObject enemyObject = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        enemyObject.name = "Ranch Raider";
-        enemyObject.transform.position = position;
-        enemyObject.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
-        enemyObject.GetComponent<Renderer>().material = purpleMat;
+        if (wave >= 20 && index % 17 == 0) return EnemyKind.MiniRanchenator;
+        if (wave >= 15 && index % 13 == 0) return EnemyKind.MiniRanchenator;
+        if (wave >= 10 && index % 9 == 0) return EnemyKind.CJEnforcer;
+        if (wave >= 7 && index % 8 == 0) return EnemyKind.RanchHarvester;
+        if (wave >= 6 && index % 7 == 0) return EnemyKind.RanchGolem;
+        if (wave >= 4 && index % 6 == 0) return EnemyKind.CorruptedDrew;
+        if (wave >= 3 && index % 4 == 0) return EnemyKind.RanchBandit;
+        return EnemyKind.RanchRaider;
+    }
 
-        GameObject eyeLeft = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        eyeLeft.name = "Raider Eye Left";
-        eyeLeft.transform.SetParent(enemyObject.transform);
-        eyeLeft.transform.localPosition = new Vector3(-0.20f, 0.42f, 0.43f);
-        eyeLeft.transform.localScale = new Vector3(0.13f, 0.13f, 0.13f);
-        eyeLeft.GetComponent<Renderer>().material = redMat;
-        Destroy(eyeLeft.GetComponent<Collider>());
+    private Vector3 GetEnemySpawnPosition(int index, int total, float radius)
+    {
+        float angle = (index / Mathf.Max(1f, total)) * Mathf.PI * 2f + UnityEngine.Random.Range(-0.12f, 0.12f);
+        return new Vector3(Mathf.Cos(angle) * radius, 1.1f, Mathf.Sin(angle) * radius);
+    }
 
-        GameObject eyeRight = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        eyeRight.name = "Raider Eye Right";
-        eyeRight.transform.SetParent(enemyObject.transform);
-        eyeRight.transform.localPosition = new Vector3(0.20f, 0.42f, 0.43f);
-        eyeRight.transform.localScale = new Vector3(0.13f, 0.13f, 0.13f);
-        eyeRight.GetComponent<Renderer>().material = redMat;
-        Destroy(eyeRight.GetComponent<Collider>());
-
-        GameObject stolenBottle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        stolenBottle.name = "Stolen Ranch Bottle";
-        stolenBottle.transform.SetParent(enemyObject.transform);
-        stolenBottle.transform.localPosition = new Vector3(0.62f, 0f, 0f);
-        stolenBottle.transform.localScale = new Vector3(0.18f, 0.45f, 0.18f);
-        stolenBottle.GetComponent<Renderer>().material = ranchMat;
-        Destroy(stolenBottle.GetComponent<Collider>());
-
-        RanchEnemy enemy = enemyObject.AddComponent<RanchEnemy>();
-        float health = 40f + enemyWaveNumber * 12f;
-        float speed = Mathf.Min(2.4f + enemyWaveNumber * 0.12f, 4.5f);
-        float damage = Mathf.Min(7f + enemyWaveNumber * 1.5f, 22f);
-        enemy.Initialize(this, health, speed, damage);
+    private RanchEnemy SpawnEnemy(EnemyKind kind, Vector3 position, float healthMultiplier,
+        float damageMultiplier, float speedMultiplier, bool finalBattleUnit)
+    {
+        EnemyStats stats = GetBaseEnemyStats(kind);
+        GameObject body = CreateEnemyBody(kind, position);
+        RanchEnemy enemy = body.AddComponent<RanchEnemy>();
+        enemy.Initialize(this, kind, stats.Name,
+            stats.Health * healthMultiplier,
+            stats.Damage * damageMultiplier,
+            stats.Speed * speedMultiplier,
+            stats.AttackRange,
+            stats.AttackCooldown,
+            stats.RewardMoney * healthMultiplier,
+            stats.RewardRanch * healthMultiplier,
+            finalBattleUnit);
 
         activeEnemies.Add(enemy);
+        return enemy;
     }
 
-    public void OnEnemyDefeated(RanchEnemy enemy)
+    private GameObject CreateEnemyBody(EnemyKind kind, Vector3 position)
     {
+        PrimitiveType primitive = PrimitiveType.Capsule;
+        Vector3 scale = Vector3.one;
+        Material material = redMaterial;
+
+        switch (kind)
+        {
+            case EnemyKind.RanchRaider:
+                scale = new Vector3(0.9f, 1f, 0.9f);
+                material = redMaterial;
+                break;
+            case EnemyKind.RanchBandit:
+                scale = new Vector3(0.95f, 1f, 0.95f);
+                material = orangeMaterial;
+                break;
+            case EnemyKind.CorruptedDrew:
+                scale = new Vector3(0.8f, 0.9f, 0.8f);
+                material = purpleMaterial;
+                break;
+            case EnemyKind.RanchGolem:
+                primitive = PrimitiveType.Cube;
+                scale = new Vector3(2.4f, 3.2f, 2.4f);
+                material = grayMaterial;
+                position.y = 1.6f;
+                break;
+            case EnemyKind.RanchHarvester:
+                primitive = PrimitiveType.Cylinder;
+                scale = new Vector3(1.3f, 1.4f, 1.3f);
+                material = yellowMaterial;
+                position.y = 1.4f;
+                break;
+            case EnemyKind.CJEnforcer:
+                scale = new Vector3(1.25f, 1.4f, 1.25f);
+                material = blackMaterial;
+                position.y = 1.4f;
+                break;
+            case EnemyKind.MiniRanchenator:
+                primitive = PrimitiveType.Sphere;
+                scale = new Vector3(1.3f, 1.3f, 1.3f);
+                material = cyanMaterial;
+                break;
+            case EnemyKind.UltimateRanchBeast:
+                primitive = PrimitiveType.Cube;
+                scale = new Vector3(5f, 5f, 5f);
+                material = darkRedMaterial;
+                position.y = 2.5f;
+                break;
+            case EnemyKind.CJ:
+                scale = new Vector3(2.2f, 2.7f, 2.2f);
+                material = blackMaterial;
+                position.y = 2.7f;
+                break;
+        }
+
+        GameObject body = GameObject.CreatePrimitive(primitive);
+        body.name = GetBaseEnemyStats(kind).Name;
+        body.transform.position = position;
+        body.transform.localScale = scale;
+        body.GetComponent<Renderer>().material = material;
+        RemoveCollider(body);
+
+        if (kind == EnemyKind.CorruptedDrew)
+        {
+            GameObject hat = CreatePrimitive(PrimitiveType.Cylinder, "Corrupted Drew Hat", Vector3.zero,
+                new Vector3(0.9f, 0.12f, 0.9f), blackMaterial, body.transform);
+            hat.transform.localPosition = new Vector3(0f, 1.4f, 0f);
+            RemoveCollider(hat);
+        }
+        else if (kind == EnemyKind.CJ || kind == EnemyKind.MiniRanchenator)
+        {
+            GameObject crown = CreatePrimitive(PrimitiveType.Cylinder, "Ranchenator Crown", Vector3.zero,
+                new Vector3(0.75f, 0.18f, 0.75f), yellowMaterial, body.transform);
+            crown.transform.localPosition = new Vector3(0f, 1.25f, 0f);
+            RemoveCollider(crown);
+        }
+
+        return body;
+    }
+
+    private EnemyStats GetBaseEnemyStats(EnemyKind kind)
+    {
+        switch (kind)
+        {
+            case EnemyKind.RanchBandit:
+                return new EnemyStats("Ranch Bandit", 55f, 8f, 4.2f, 10f, 1.7f, 35d, 4d);
+            case EnemyKind.CorruptedDrew:
+                return new EnemyStats("Corrupted Drew", 80f, 22f, 8.5f, 1.8f, 0.65f, 60d, 8d);
+            case EnemyKind.RanchGolem:
+                return new EnemyStats("Ranch Golem", 650f, 30f, 1.45f, 2.3f, 1.8f, 180d, 20d);
+            case EnemyKind.RanchHarvester:
+                return new EnemyStats("Ranch Harvester", 95f, 5f, 5.7f, 2.2f, 0.7f, 120d, 15d);
+            case EnemyKind.CJEnforcer:
+                return new EnemyStats("CJ Enforcer", 850f, 55f, 5.2f, 2.2f, 0.75f, 500d, 50d);
+            case EnemyKind.MiniRanchenator:
+                return new EnemyStats("Mini-Ranchenator", 2200f, 120f, 7.3f, 7.5f, 0.7f, 1500d, 150d);
+            case EnemyKind.UltimateRanchBeast:
+                return new EnemyStats("Ultimate Ranch Beast", 25000f, 250f, 3.8f, 3.5f, 1f, 15000d, 1500d);
+            case EnemyKind.CJ:
+                return new EnemyStats("CJ, Ultimate Ranchenator", 250000f, 450f, 6.2f, 12f, 0.55f, 1000000d, 100000d);
+            default:
+                return new EnemyStats("Ranch Raider", 45f, 7f, 5.5f, 1.8f, 0.9f, 25d, 3d);
+        }
+    }
+
+    public void EnemyDefeated(RanchEnemy enemy, double rewardMoney, double rewardRanch)
+    {
+        if (enemy == null) return;
         activeEnemies.Remove(enemy);
-        enemiesDefeated += 1;
+        enemiesDefeated++;
+        money += rewardMoney;
+        AddRanch(rewardRanch);
+        Destroy(enemy.gameObject);
+    }
 
-        float reward = 25f + enemyWaveNumber * 8f;
-        money += reward;
-        ranch += 2f + enemyWaveNumber * 0.5f;
-        cjHeat += 10;
-
-        LogEvent("Ranch Raider defeated. Earned $" + reward.ToString("F0") + " and recovered stolen Ranch.");
-
-        if (activeEnemies.Count == 0)
+    private void CleanEnemyList()
+    {
+        for (int i = activeEnemies.Count - 1; i >= 0; i--)
         {
-            playerHealth = Mathf.Min(playerMaxHealth, playerHealth + 20f);
-            LogEvent("Wave cleared. You recovered 20 health.");
+            if (activeEnemies[i] == null) activeEnemies.RemoveAt(i);
         }
     }
 
-    private string GetWaveCountdownText()
+    private void ClearAllEnemies()
     {
-        float remaining = Mathf.Max(0f, enemyWaveInterval - enemyWaveTimer);
-        int minutes = Mathf.FloorToInt(remaining / 60f);
-        int seconds = Mathf.FloorToInt(remaining % 60f);
-        return minutes.ToString("0") + ":" + seconds.ToString("00");
+        for (int i = activeEnemies.Count - 1; i >= 0; i--)
+        {
+            if (activeEnemies[i] != null) Destroy(activeEnemies[i].gameObject);
+        }
+        activeEnemies.Clear();
+    }
+
+    private RanchEnemy FindClosestEnemy(Vector3 position)
+    {
+        RanchEnemy closest = null;
+        float bestDistance = float.MaxValue;
+
+        for (int i = 0; i < activeEnemies.Count; i++)
+        {
+            RanchEnemy enemy = activeEnemies[i];
+            if (enemy == null) continue;
+            float distance = (enemy.transform.position - position).sqrMagnitude;
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                closest = enemy;
+            }
+        }
+
+        return closest;
     }
 
     // ============================================================
-    // CJ SYSTEM
+    // CJ FINAL BATTLE
     // ============================================================
 
-    private void UpdateCJ()
+    private void StartFinalBattle()
     {
-        if (cjHeat >= 250 && !cjHasWarned)
+        if (!citadelBuilt)
         {
-            cjHasWarned = true;
-            LogEvent("CJ: Cute little ranch operation you've got there.");
+            LogEvent("The Ranch Citadel is required before challenging CJ.");
+            return;
         }
 
-        if (cjHeat >= 1500 && !cjBattleUnlocked)
+        if (finalBattleActive)
         {
-            cjBattleUnlocked = true;
-            LogEvent("CJ Battle Unlocked. Go to the black CJ Gate and press C.");
+            LogEvent("The CJ battle is already active.");
+            return;
+        }
+
+        ClearAllEnemies();
+        finalBattleActive = true;
+        finalBattlePhase = 1;
+        SpawnCJPhaseOne();
+        LogEvent("CJ FINAL BATTLE — PHASE 1: CJ Enforcers invade the Citadel.");
+    }
+
+    private void SpawnCJPhaseOne()
+    {
+        float scale = GetFinalBattleScale();
+        for (int i = 0; i < 8; i++)
+        {
+            SpawnEnemy(EnemyKind.CJEnforcer, GetEnemySpawnPosition(i, 8, 28f),
+                3f * scale, 2.2f * scale, 1.25f * scale, true);
         }
     }
 
-    private void ChallengeCJ()
+    private void SpawnCJPhaseTwo()
     {
-        float playerPower =
-            money +
-            ranch * 2f +
-            bottles * bottleCaps[bottleTier] * 8f +
-            bottlesSold * 12f +
-            drewLevel * 500f +
-            bottleTier * 900f +
-            treeLevel * 600f;
+        float scale = GetFinalBattleScale();
+        RanchEnemy golem = SpawnEnemy(EnemyKind.RanchGolem, new Vector3(0f, 3f, 35f),
+            80f * scale, 5f * scale, 1.15f * scale, true);
+        golem.OverrideDisplayName("GIANT RANCH GOLEM");
+        LogEvent("CJ FINAL BATTLE — PHASE 2: The Giant Ranch Golem awakens.");
+    }
 
-        if (playerPower >= cjPower)
+    private void SpawnCJPhaseThree()
+    {
+        float scale = GetFinalBattleScale();
+        SpawnEnemy(EnemyKind.CJ, new Vector3(0f, 2.7f, 38f),
+            scale, scale, Mathf.Sqrt(scale), true);
+        LogEvent("CJ FINAL BATTLE — PHASE 3: CJ, the Ultimate Ranchenator, enters battle.");
+    }
+
+    private float GetFinalBattleScale()
+    {
+        return Mathf.Pow(1.18f, Mathf.Max(0, waveNumber - 10));
+    }
+
+    private void UpdateFinalBattle()
+    {
+        if (!finalBattleActive) return;
+        CleanEnemyList();
+        if (activeEnemies.Count > 0) return;
+
+        if (finalBattlePhase == 1)
         {
+            finalBattlePhase = 2;
+            SpawnCJPhaseTwo();
+        }
+        else if (finalBattlePhase == 2)
+        {
+            finalBattlePhase = 3;
+            SpawnCJPhaseThree();
+        }
+        else if (finalBattlePhase == 3)
+        {
+            finalBattlePhase = 4;
+            finalBattleActive = false;
             cjDefeated = true;
-            LogEvent("You defeated CJ, the Ultimate Ranchenator.");
-        }
-        else
-        {
-            float missing = cjPower - playerPower;
-            LogEvent("CJ defeats you economically. Gain about " + missing.ToString("F0") + " more Ranch Power.");
-            cjHeat += 100;
+            UnlockCursorForVictory();
         }
     }
 
+    private void UnlockCursorForVictory()
+    {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
     // ============================================================
-    // HUD / UI
+    // PROJECTILES
+    // ============================================================
+
+    public void SpawnBottleProjectile(Vector3 origin, Transform target, float damage, string ownerName)
+    {
+        if (target == null) return;
+
+        GameObject projectileObject = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        projectileObject.name = "Thrown Empty Ranch Bottle";
+        projectileObject.transform.position = origin;
+        projectileObject.transform.localScale = new Vector3(0.18f, 0.36f, 0.18f);
+        projectileObject.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        projectileObject.GetComponent<Renderer>().material = whiteMaterial;
+        RemoveCollider(projectileObject);
+
+        RanchProjectile projectile = projectileObject.AddComponent<RanchProjectile>();
+        projectile.Initialize(this, target, damage, ownerName);
+    }
+
+    // ============================================================
+    // UI
     // ============================================================
 
     private void OnGUI()
     {
-        GUIStyle big = new GUIStyle(GUI.skin.label);
-        big.fontSize = 22;
-        big.normal.textColor = Color.white;
+        GUIStyle normal = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 20,
+            normal = { textColor = Color.white }
+        };
 
-        GUIStyle box = new GUIStyle(GUI.skin.box);
-        box.fontSize = 18;
-        box.alignment = TextAnchor.UpperLeft;
+        GUIStyle small = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 16,
+            normal = { textColor = Color.white }
+        };
 
-        GUIStyle title = new GUIStyle(GUI.skin.label);
-        title.fontSize = 34;
-        title.fontStyle = FontStyle.Bold;
-        title.normal.textColor = Color.white;
-        title.alignment = TextAnchor.MiddleCenter;
+        GUIStyle title = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 34,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
+        };
 
-        GUI.Box(new Rect(15, 15, 380, 340), "");
-        GUI.Label(new Rect(30, 25, 330, 30), "RANCH SIMULATOR", big);
-        GUI.Label(new Rect(30, 65, 330, 30), "Raw Ranch: " + ranch.ToString("F1"), big);
-        GUI.Label(new Rect(30, 95, 330, 30), "Bottles: " + bottles, big);
-        GUI.Label(new Rect(30, 125, 330, 30), "Money: $" + money.ToString("F0"), big);
-        GUI.Label(new Rect(30, 155, 330, 30), "Bottle: " + bottleNames[bottleTier] + " (" + bottleCaps[bottleTier] + ")", big);
-        GUI.Label(new Rect(30, 185, 330, 30), "Drew Level: " + drewLevel, big);
-        GUI.Label(new Rect(30, 215, 350, 30), "CJ Heat: " + cjHeat, big);
-        GUI.Label(new Rect(30, 245, 350, 30), "Health: " + playerHealth.ToString("F0") + "/" + playerMaxHealth.ToString("F0"), big);
-        GUI.Label(new Rect(30, 275, 350, 30), "Enemies: " + activeEnemies.Count + " | Defeated: " + enemiesDefeated, big);
-        GUI.Label(new Rect(30, 305, 350, 30), "Next wave: " + GetWaveCountdownText(), big);
+        GUI.Box(new Rect(14f, 14f, 410f, 315f), string.Empty);
+        GUI.Label(new Rect(28f, 24f, 380f, 30f), "RANCH SIMULATOR", normal);
+        GUI.Label(new Rect(28f, 60f, 380f, 28f), "Health: " + playerHealth.ToString("F0") + "/" + playerMaxHealth.ToString("F0"), normal);
+        GUI.Label(new Rect(28f, 90f, 380f, 28f), "Raw Ranch: " + Compact(ranch), normal);
+        GUI.Label(new Rect(28f, 120f, 380f, 28f), "Bottles: " + Compact(bottles), normal);
+        GUI.Label(new Rect(28f, 150f, 380f, 28f), "Money: $" + Compact(money), normal);
+        GUI.Label(new Rect(28f, 180f, 380f, 28f), "Ranch Type: " + ranchTypeNames[ranchTypeTier] + " (" + ranchValueMultipliers[ranchTypeTier] + "x)", small);
+        GUI.Label(new Rect(28f, 207f, 380f, 28f), "Bottle: " + bottleNames[bottleTier] + " (" + bottleCaps[bottleTier] + ")", small);
+        GUI.Label(new Rect(28f, 234f, 380f, 28f), "Sword: " + swordNames[swordTier] + " — " + swordDamages[swordTier].ToString("F0") + " dmg", small);
+        GUI.Label(new Rect(28f, 261f, 380f, 28f), "Drew: " + (drewUnlocked ? "Level " + drewLevel + GetDrewStatusSuffix() : "not hired"), small);
+        GUI.Label(new Rect(28f, 288f, 380f, 28f), "Wave: " + waveNumber + " | Enemies: " + activeEnemies.Count, small);
 
-        GUI.Box(new Rect(Screen.width - 410, 15, 395, 250), "");
-        GUI.Label(new Rect(Screen.width - 390, 35, 370, 30), "Next Upgrades / Combat", big);
+        GUI.Box(new Rect(Screen.width - 430f, 14f, 416f, 315f), string.Empty);
+        GUI.Label(new Rect(Screen.width - 412f, 25f, 385f, 30f), "EMPIRE STATUS", normal);
+        GUI.Label(new Rect(Screen.width - 412f, 62f, 385f, 25f), BuildingStatus("Factory", factoryBuilt), small);
+        GUI.Label(new Rect(Screen.width - 412f, 88f, 385f, 25f), BuildingStatus("Warehouse", warehouseBuilt), small);
+        GUI.Label(new Rect(Screen.width - 412f, 114f, 385f, 25f), BuildingStatus("Laboratory", laboratoryBuilt), small);
+        GUI.Label(new Rect(Screen.width - 412f, 140f, 385f, 25f), BuildingStatus("Fortress", fortressBuilt), small);
+        GUI.Label(new Rect(Screen.width - 412f, 166f, 385f, 25f), BuildingStatus("Citadel", citadelBuilt), small);
 
-        string bottleUpgradeText = bottleTier < bottleNames.Length - 1
-            ? "Bottle Upgrade: $" + GetBottleUpgradeCost().ToString("F0")
-            : "Bottle Upgrade: MAX";
+        string nextBuilding = nextBuildingIndex < buildingNames.Length
+            ? "Next: " + buildingNames[nextBuildingIndex] + " — $" + Compact(buildingCosts[nextBuildingIndex])
+            : "All buildings complete";
+        GUI.Label(new Rect(Screen.width - 412f, 202f, 385f, 42f), nextBuilding, small);
 
-        string drewUpgradeText = !drewUnlocked
-            ? "Hire Drew: $" + drewUpgradeCost.ToString("F0")
-            : drewLevel >= 10
-                ? "Drew Upgrade: MAX"
-                : "Drew Upgrade: $" + GetDrewUpgradeCost().ToString("F0");
+        if (finalBattleActive)
+        {
+            GUI.Label(new Rect(Screen.width - 412f, 246f, 385f, 28f), "CJ BATTLE: PHASE " + finalBattlePhase, normal);
+        }
+        else
+        {
+            GUI.Label(new Rect(Screen.width - 412f, 246f, 385f, 28f), "Next wave: " + FormatTime(waveTimer), normal);
+        }
 
-        GUI.Label(new Rect(Screen.width - 390, 80, 370, 30), bottleUpgradeText, big);
-        GUI.Label(new Rect(Screen.width - 390, 115, 370, 30), drewUpgradeText, big);
-        GUI.Label(new Rect(Screen.width - 390, 150, 370, 30), cjBattleUnlocked ? "CJ Gate: UNLOCKED" : "CJ Gate: locked", big);
-        GUI.Label(new Rect(Screen.width - 390, 185, 370, 30), "Ranch Sword Damage: " + (swordBaseDamage + bottleTier * 5f).ToString("F0"), big);
-        GUI.Label(new Rect(Screen.width - 390, 215, 370, 30), "Left click: attack | T: test wave", big);
+        GUI.Label(new Rect(Screen.width - 412f, 280f, 385f, 25f), "Enemies defeated: " + Compact(enemiesDefeated), small);
 
         if (!string.IsNullOrEmpty(currentPrompt))
         {
-            GUI.Box(new Rect(Screen.width / 2 - 330, Screen.height - 90, 660, 55), "");
-            GUI.Label(new Rect(Screen.width / 2 - 310, Screen.height - 78, 620, 30), currentPrompt, big);
+            GUI.Box(new Rect(Screen.width / 2f - 360f, Screen.height - 92f, 720f, 56f), string.Empty);
+            GUI.Label(new Rect(Screen.width / 2f - 335f, Screen.height - 78f, 670f, 30f), currentPrompt, normal);
         }
 
         if (!string.IsNullOrEmpty(lastEvent))
         {
-            GUI.Box(new Rect(15, Screen.height - 120, 720, 95), "");
-            GUI.Label(new Rect(30, Screen.height - 105, 690, 65), lastEvent, big);
+            GUI.Box(new Rect(14f, Screen.height - 150f, 860f, 110f), string.Empty);
+            GUI.Label(new Rect(30f, Screen.height - 136f, 830f, 82f), lastEvent, normal);
         }
 
         if (cjDefeated)
         {
-            GUI.Box(new Rect(Screen.width / 2 - 360, Screen.height / 2 - 160, 720, 320), "");
-            GUI.Label(new Rect(Screen.width / 2 - 340, Screen.height / 2 - 130, 680, 60), "CJ HAS BEEN OVERTHROWN", title);
-            GUI.Label(new Rect(Screen.width / 2 - 310, Screen.height / 2 - 45, 620, 40), "CJ: You have become... the Ranch Simulator.", big);
-            GUI.Label(new Rect(Screen.width / 2 - 310, Screen.height / 2 + 5, 620, 40), "Drew: There is another.", big);
-            GUI.Label(new Rect(Screen.width / 2 - 310, Screen.height / 2 + 75, 620, 40), "Press R to restart.", big);
+            GUI.Box(new Rect(Screen.width / 2f - 390f, Screen.height / 2f - 205f, 780f, 410f), string.Empty);
+            GUI.Label(new Rect(Screen.width / 2f - 360f, Screen.height / 2f - 175f, 720f, 60f),
+                "CJ HAS BEEN OVERTHROWN", title);
+            GUI.Label(new Rect(Screen.width / 2f - 330f, Screen.height / 2f - 80f, 660f, 45f),
+                "CJ: Impossible...", normal);
+            GUI.Label(new Rect(Screen.width / 2f - 330f, Screen.height / 2f - 35f, 660f, 45f),
+                "You have surpassed the Ranch.", normal);
+            GUI.Label(new Rect(Screen.width / 2f - 330f, Screen.height / 2f + 35f, 660f, 45f),
+                "Drew walks up: \"There is another.\"", normal);
+            GUI.Label(new Rect(Screen.width / 2f - 330f, Screen.height / 2f + 95f, 660f, 45f),
+                "Ranch Simulator 2 is coming.", normal);
+            GUI.Label(new Rect(Screen.width / 2f - 330f, Screen.height / 2f + 145f, 660f, 35f),
+                "Press R to restart.", normal);
         }
+    }
+
+    private string BuildingStatus(string name, bool built)
+    {
+        return (built ? "[BUILT] " : "[LOCKED] ") + name;
+    }
+
+    private string GetDrewStatusSuffix()
+    {
+        if (drewLevel >= 50) return " — ASCENDED";
+        if (drewLevel >= 25) return " — self-producing";
+        if (drewLevel >= 20) return " — Mini-Drews active";
+        if (drewLevel >= 15) return " — auto-upgrading";
+        if (drewLevel >= 10) return " — auto-selling";
+        if (drewLevel >= 5) return " — auto-bottling";
+        return string.Empty;
+    }
+
+    private string FormatTime(float seconds)
+    {
+        int totalSeconds = Mathf.Max(0, Mathf.CeilToInt(seconds));
+        return (totalSeconds / 60).ToString("00") + ":" + (totalSeconds % 60).ToString("00");
+    }
+
+    private string Compact(double value)
+    {
+        double absolute = Math.Abs(value);
+        if (absolute >= 1e15d) return (value / 1e15d).ToString("0.##") + "Q";
+        if (absolute >= 1e12d) return (value / 1e12d).ToString("0.##") + "T";
+        if (absolute >= 1e9d) return (value / 1e9d).ToString("0.##") + "B";
+        if (absolute >= 1e6d) return (value / 1e6d).ToString("0.##") + "M";
+        if (absolute >= 1e3d) return (value / 1e3d).ToString("0.##") + "K";
+        return value.ToString("0.##");
+    }
+
+    private string Compact(long value)
+    {
+        return Compact((double)value);
+    }
+
+    private long SafeAddLong(long a, long b)
+    {
+        if (b > 0 && a > long.MaxValue - b) return long.MaxValue;
+        if (b < 0 && a < long.MinValue - b) return long.MinValue;
+        return a + b;
     }
 
     private void LogEvent(string message)
@@ -1124,120 +1640,502 @@ public class RanchSimulatorFullGame : MonoBehaviour
         Debug.Log(message);
     }
 
-    private void UpdateEventTimer()
+    private void UpdateTimers()
     {
-        if (eventTimer > 0f)
-        {
-            eventTimer -= Time.deltaTime;
-        }
-    }
-
-    // ============================================================
-    // UNUSED BUT READY FOR EXPANSION
-    // ============================================================
-
-    private void UpgradeTree()
-    {
-        if (money >= treeUpgradeCost)
-        {
-            money -= treeUpgradeCost;
-            treeLevel += 1;
-            ranchPerSecond += 0.7f;
-            extractionMultiplier += 0.2f;
-            treeUpgradeCost *= 2.1f;
-            LogEvent("Ranch Tree upgraded to Level " + treeLevel + ".");
-        }
+        if (eventTimer > 0f) eventTimer -= Time.deltaTime;
     }
 }
 
-/// <summary>
-/// Simple enemy controller used by the generated Ranch Raiders.
-/// </summary>
+// ============================================================================
+// ENEMY AI
+// ============================================================================
+
 public class RanchEnemy : MonoBehaviour
 {
     private RanchSimulatorFullGame game;
-    private Transform player;
+    private EnemyKind kind;
+    private string displayName;
+    private float maxHealth;
     private float health;
-    private float moveSpeed;
-    private float attackDamage;
-    private float attackRange = 1.7f;
-    private float attackCooldown = 1.1f;
-    private float attackTimer = 0f;
-    private bool defeated = false;
+    private float damage;
+    private float speed;
+    private float attackRange;
+    private float attackCooldown;
+    private float attackTimer;
+    private double rewardMoney;
+    private double rewardRanch;
+    private bool finalBattleUnit;
+    private TextMesh label;
+    private float labelTimer;
+    private float stolenReportTimer;
 
-    public void Initialize(
-        RanchSimulatorFullGame owner,
-        float startingHealth,
-        float speed,
-        float damage
-    )
+    public void Initialize(RanchSimulatorFullGame owner, EnemyKind enemyKind, string enemyName,
+        float enemyHealth, float enemyDamage, float enemySpeed, float enemyAttackRange,
+        float enemyAttackCooldown, double moneyReward, double ranchReward, bool isFinalBattleUnit)
     {
         game = owner;
-        player = owner.GetPlayerTransform();
-        health = startingHealth;
-        moveSpeed = speed;
-        attackDamage = damage;
+        kind = enemyKind;
+        displayName = enemyName;
+        maxHealth = Mathf.Max(1f, enemyHealth);
+        health = maxHealth;
+        damage = Mathf.Max(1f, enemyDamage);
+        speed = Mathf.Max(0.1f, enemySpeed);
+        attackRange = enemyAttackRange;
+        attackCooldown = Mathf.Max(0.1f, enemyAttackCooldown);
+        rewardMoney = moneyReward;
+        rewardRanch = ranchReward;
+        finalBattleUnit = isFinalBattleUnit;
+
+        CreateHealthLabel();
+    }
+
+    public void OverrideDisplayName(string newName)
+    {
+        displayName = newName;
+        UpdateLabel();
+    }
+
+    private void CreateHealthLabel()
+    {
+        GameObject labelObject = new GameObject("Enemy Health Label");
+        labelObject.transform.SetParent(transform);
+        labelObject.transform.localPosition = Vector3.up * 2.2f;
+        label = labelObject.AddComponent<TextMesh>();
+        label.fontSize = 38;
+        label.characterSize = 0.10f;
+        label.anchor = TextAnchor.MiddleCenter;
+        label.alignment = TextAlignment.Center;
+        label.color = Color.white;
+        labelObject.AddComponent<LabelBillboard>();
+        UpdateLabel();
     }
 
     private void Update()
     {
-        if (defeated || game == null || player == null) return;
+        if (game == null || game.GetPlayerTransform() == null) return;
 
-        attackTimer = Mathf.Max(0f, attackTimer - Time.deltaTime);
+        attackTimer -= Time.deltaTime;
+        labelTimer -= Time.deltaTime;
+        stolenReportTimer -= Time.deltaTime;
 
+        if (labelTimer <= 0f)
+        {
+            labelTimer = 0.25f;
+            UpdateLabel();
+        }
+
+        if (kind == EnemyKind.RanchHarvester)
+        {
+            UpdateHarvester();
+        }
+        else if (kind == EnemyKind.RanchBandit || kind == EnemyKind.MiniRanchenator || kind == EnemyKind.CJ)
+        {
+            UpdateRangedAttacker();
+        }
+        else
+        {
+            UpdateMeleeAttacker();
+        }
+    }
+
+    private void UpdateMeleeAttacker()
+    {
+        Transform player = game.GetPlayerTransform();
         Vector3 target = player.position;
         target.y = transform.position.y;
-        Vector3 direction = target - transform.position;
-        float distance = direction.magnitude;
+        float distance = Vector3.Distance(transform.position, target);
 
         if (distance > attackRange)
         {
-            transform.position = Vector3.MoveTowards(
-                transform.position,
-                target,
-                moveSpeed * Time.deltaTime
-            );
+            MoveToward(target);
         }
         else if (attackTimer <= 0f)
         {
             attackTimer = attackCooldown;
-            game.DamagePlayer(attackDamage);
+            game.DamagePlayer(damage, displayName);
+        }
+    }
+
+    private void UpdateRangedAttacker()
+    {
+        Transform player = game.GetPlayerTransform();
+        Vector3 target = player.position;
+        target.y = transform.position.y;
+        float distance = Vector3.Distance(transform.position, target);
+
+        float preferredRange = kind == EnemyKind.CJ ? 10f : 7f;
+        if (distance > preferredRange + 1.5f)
+        {
+            MoveToward(target);
+        }
+        else if (distance < preferredRange - 2f)
+        {
+            Vector3 away = transform.position + (transform.position - target).normalized * 4f;
+            MoveToward(away);
         }
 
-        if (direction.sqrMagnitude > 0.01f)
+        if (distance <= attackRange && attackTimer <= 0f)
         {
-            transform.rotation = Quaternion.LookRotation(direction.normalized);
+            attackTimer = attackCooldown;
+            game.SpawnBottleProjectile(transform.position + Vector3.up * 1.1f,
+                player, damage, displayName);
         }
+    }
+
+    private void UpdateHarvester()
+    {
+        Vector3 target = game.GetHarvesterTargetPosition();
+        target.y = transform.position.y;
+        float distance = Vector3.Distance(transform.position, target);
+
+        if (distance > attackRange)
+        {
+            MoveToward(target);
+            return;
+        }
+
+        double stolen = game.StealRanch(damage * 8d * Time.deltaTime);
+        if (stolen > 0d && stolenReportTimer <= 0f)
+        {
+            stolenReportTimer = 1f;
+            Debug.Log(displayName + " is stealing Ranch from storage.");
+        }
+
+        if (stolen <= 0d)
+        {
+            UpdateMeleeAttacker();
+        }
+    }
+
+    private void MoveToward(Vector3 target)
+    {
+        Vector3 direction = target - transform.position;
+        direction.y = 0f;
+        if (direction.sqrMagnitude <= 0.001f) return;
+
+        transform.position += direction.normalized * speed * Time.deltaTime;
+        transform.rotation = Quaternion.Slerp(transform.rotation,
+            Quaternion.LookRotation(direction.normalized), Time.deltaTime * 8f);
     }
 
     public void TakeDamage(float amount)
     {
-        if (defeated) return;
-
-        health -= amount;
-        transform.localScale = Vector3.one * 0.92f;
+        if (health <= 0f) return;
+        health -= Mathf.Max(0f, amount);
+        UpdateLabel();
 
         if (health <= 0f)
         {
-            defeated = true;
-            game.OnEnemyDefeated(this);
+            game.EnemyDefeated(this, rewardMoney, rewardRanch);
+        }
+    }
+
+    private void UpdateLabel()
+    {
+        if (label == null) return;
+        label.text = displayName + "\n" + Mathf.Max(0f, health).ToString("0") + "/" + maxHealth.ToString("0");
+    }
+}
+
+// ============================================================================
+// PROJECTILE
+// ============================================================================
+
+public class RanchProjectile : MonoBehaviour
+{
+    private RanchSimulatorFullGame game;
+    private Transform target;
+    private float damage;
+    private string ownerName;
+    private float life = 7f;
+    private float speed = 14f;
+
+    public void Initialize(RanchSimulatorFullGame owner, Transform projectileTarget, float projectileDamage,
+        string projectileOwnerName)
+    {
+        game = owner;
+        target = projectileTarget;
+        damage = projectileDamage;
+        ownerName = projectileOwnerName;
+    }
+
+    private void Update()
+    {
+        life -= Time.deltaTime;
+        if (life <= 0f || target == null)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Vector3 aim = target.position + Vector3.up * 0.8f;
+        transform.position = Vector3.MoveTowards(transform.position, aim, speed * Time.deltaTime);
+        transform.Rotate(Vector3.right, 600f * Time.deltaTime, Space.Self);
+
+        if (Vector3.Distance(transform.position, aim) <= 0.45f)
+        {
+            game.DamagePlayer(damage, ownerName + "'s bottle");
             Destroy(gameObject);
         }
     }
 }
 
-/// <summary>
-/// Makes world labels face the camera.
-/// This can live in the same file as the main game script.
-/// </summary>
+// ============================================================================
+// SUPPORT TYPES
+// ============================================================================
+
+public enum EnemyKind
+{
+    RanchRaider,
+    RanchBandit,
+    CorruptedDrew,
+    RanchGolem,
+    RanchHarvester,
+    CJEnforcer,
+    MiniRanchenator,
+    UltimateRanchBeast,
+    CJ
+}
+
+public struct EnemyStats
+{
+    public string Name;
+    public float Health;
+    public float Damage;
+    public float Speed;
+    public float AttackRange;
+    public float AttackCooldown;
+    public double RewardMoney;
+    public double RewardRanch;
+
+    public EnemyStats(string name, float health, float damage, float speed, float attackRange,
+        float attackCooldown, double rewardMoney, double rewardRanch)
+    {
+        Name = name;
+        Health = health;
+        Damage = damage;
+        Speed = speed;
+        AttackRange = attackRange;
+        AttackCooldown = attackCooldown;
+        RewardMoney = rewardMoney;
+        RewardRanch = rewardRanch;
+    }
+}
+
 public class LabelBillboard : MonoBehaviour
 {
     private void LateUpdate()
     {
-        Camera cam = Camera.main;
-        if (cam == null) return;
+        Camera camera = Camera.main;
+        if (camera == null) return;
+        transform.LookAt(transform.position + camera.transform.rotation * Vector3.forward,
+            camera.transform.rotation * Vector3.up);
+    }
+}
 
-        transform.LookAt(transform.position + cam.transform.rotation * Vector3.forward,
-                         cam.transform.rotation * Vector3.up);
+// ============================================================================
+// INPUT BRIDGE: SUPPORTS OLD INPUT MANAGER, NEW INPUT SYSTEM, OR BOTH
+// ============================================================================
+
+public enum RanchAction
+{
+    Extract,
+    BottleOne,
+    BottleAll,
+    Sell,
+    UpgradeBottle,
+    UpgradeDrew,
+    UpgradeSword,
+    Build,
+    Research,
+    ChallengeCJ,
+    Restart,
+    Escape
+}
+
+public static class RanchInput
+{
+    public static float MoveX
+    {
+        get
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetAxisRaw("Horizontal");
+#elif ENABLE_INPUT_SYSTEM
+            if (Keyboard.current == null) return 0f;
+            float value = 0f;
+            if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) value -= 1f;
+            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) value += 1f;
+            return value;
+#else
+            return 0f;
+#endif
+        }
+    }
+
+    public static float MoveY
+    {
+        get
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetAxisRaw("Vertical");
+#elif ENABLE_INPUT_SYSTEM
+            if (Keyboard.current == null) return 0f;
+            float value = 0f;
+            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) value -= 1f;
+            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) value += 1f;
+            return value;
+#else
+            return 0f;
+#endif
+        }
+    }
+
+    public static float MouseX
+    {
+        get
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetAxis("Mouse X");
+#elif ENABLE_INPUT_SYSTEM
+            return Mouse.current != null ? Mouse.current.delta.ReadValue().x * 0.08f : 0f;
+#else
+            return 0f;
+#endif
+        }
+    }
+
+    public static float MouseY
+    {
+        get
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetAxis("Mouse Y");
+#elif ENABLE_INPUT_SYSTEM
+            return Mouse.current != null ? Mouse.current.delta.ReadValue().y * 0.08f : 0f;
+#else
+            return 0f;
+#endif
+        }
+    }
+
+    public static bool AttackDown
+    {
+        get
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetMouseButtonDown(0);
+#elif ENABLE_INPUT_SYSTEM
+            return Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
+#else
+            return false;
+#endif
+        }
+    }
+
+    public static bool ShiftHeld
+    {
+        get
+        {
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+#elif ENABLE_INPUT_SYSTEM
+            return Keyboard.current != null &&
+                   (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed);
+#else
+            return false;
+#endif
+        }
+    }
+
+    public static bool Down(RanchAction action)
+    {
+#if ENABLE_LEGACY_INPUT_MANAGER
+        return Input.GetKeyDown(ToKeyCode(action));
+#elif ENABLE_INPUT_SYSTEM
+        if (Keyboard.current == null) return false;
+        switch (action)
+        {
+            case RanchAction.Extract: return Keyboard.current.eKey.wasPressedThisFrame;
+            case RanchAction.BottleOne: return Keyboard.current.bKey.wasPressedThisFrame;
+            case RanchAction.BottleAll: return Keyboard.current.vKey.wasPressedThisFrame;
+            case RanchAction.Sell: return Keyboard.current.fKey.wasPressedThisFrame;
+            case RanchAction.UpgradeBottle: return Keyboard.current.uKey.wasPressedThisFrame;
+            case RanchAction.UpgradeDrew: return Keyboard.current.gKey.wasPressedThisFrame;
+            case RanchAction.UpgradeSword: return Keyboard.current.kKey.wasPressedThisFrame;
+            case RanchAction.Build: return Keyboard.current.hKey.wasPressedThisFrame;
+            case RanchAction.Research: return Keyboard.current.jKey.wasPressedThisFrame;
+            case RanchAction.ChallengeCJ: return Keyboard.current.cKey.wasPressedThisFrame;
+            case RanchAction.Restart: return Keyboard.current.rKey.wasPressedThisFrame;
+            case RanchAction.Escape: return Keyboard.current.escapeKey.wasPressedThisFrame;
+            default: return false;
+        }
+#else
+        return false;
+#endif
+    }
+
+    public static bool Held(RanchAction action)
+    {
+#if ENABLE_LEGACY_INPUT_MANAGER
+        return Input.GetKey(ToKeyCode(action));
+#elif ENABLE_INPUT_SYSTEM
+        if (Keyboard.current == null) return false;
+        switch (action)
+        {
+            case RanchAction.Extract: return Keyboard.current.eKey.isPressed;
+            case RanchAction.BottleOne: return Keyboard.current.bKey.isPressed;
+            case RanchAction.BottleAll: return Keyboard.current.vKey.isPressed;
+            case RanchAction.Sell: return Keyboard.current.fKey.isPressed;
+            case RanchAction.UpgradeBottle: return Keyboard.current.uKey.isPressed;
+            case RanchAction.UpgradeDrew: return Keyboard.current.gKey.isPressed;
+            case RanchAction.UpgradeSword: return Keyboard.current.kKey.isPressed;
+            case RanchAction.Build: return Keyboard.current.hKey.isPressed;
+            case RanchAction.Research: return Keyboard.current.jKey.isPressed;
+            case RanchAction.ChallengeCJ: return Keyboard.current.cKey.isPressed;
+            case RanchAction.Restart: return Keyboard.current.rKey.isPressed;
+            case RanchAction.Escape: return Keyboard.current.escapeKey.isPressed;
+            default: return false;
+        }
+#else
+        return false;
+#endif
+    }
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+    private static KeyCode ToKeyCode(RanchAction action)
+    {
+        switch (action)
+        {
+            case RanchAction.Extract: return KeyCode.E;
+            case RanchAction.BottleOne: return KeyCode.B;
+            case RanchAction.BottleAll: return KeyCode.V;
+            case RanchAction.Sell: return KeyCode.F;
+            case RanchAction.UpgradeBottle: return KeyCode.U;
+            case RanchAction.UpgradeDrew: return KeyCode.G;
+            case RanchAction.UpgradeSword: return KeyCode.K;
+            case RanchAction.Build: return KeyCode.H;
+            case RanchAction.Research: return KeyCode.J;
+            case RanchAction.ChallengeCJ: return KeyCode.C;
+            case RanchAction.Restart: return KeyCode.R;
+            case RanchAction.Escape: return KeyCode.Escape;
+            default: return KeyCode.None;
+        }
+    }
+#endif
+}
+
+// ============================================================================
+// AUTO-BOOTSTRAP: NO MANUAL GAMEOBJECT SETUP REQUIRED
+// ============================================================================
+
+public static class RanchSimulatorBootstrap
+{
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void CreateGame()
+    {
+        if (UnityEngine.Object.FindObjectOfType<RanchSimulatorFullGame>() != null) return;
+        GameObject gameObject = new GameObject("Ranch Simulator - Ultimate Update");
+        gameObject.AddComponent<RanchSimulatorFullGame>();
     }
 }
