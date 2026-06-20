@@ -28,6 +28,10 @@ public class RanchWorldBuilder : MonoBehaviour
         CreateStation(world, "CJ Gate", new Vector3(8f, 0.5f, 8f), black, RanchStationType.CJGate, "CJ GATE");
         CreateStation(world, "Ranch Empire Shop Terminal", new Vector3(7f, 0.5f, -8f), teal, RanchStationType.Shop, "RANCH EMPIRE SHOP\nPress E or P");
 
+        Transform arenaPlayerStart;
+        Transform arenaBossSpawn;
+        Transform cjArena = CreateCJArena(world, out arenaPlayerStart, out arenaBossSpawn);
+
         RanchPlayerController player = CreatePlayer(world);
         GameObject drew = CreateDrew(world);
         CreateEmpireVisual(world);
@@ -38,6 +42,7 @@ public class RanchWorldBuilder : MonoBehaviour
         core.Waves.RegisterWorld(tree, enemies, player.transform);
         core.RegisterWorld(player, tree);
         core.Shop.RegisterPlayer(player);
+        core.CJ.RegisterArena(cjArena, arenaPlayerStart, arenaBossSpawn);
     }
 
     public static Material CreateRuntimeMaterial(Color color)
@@ -107,7 +112,19 @@ public class RanchWorldBuilder : MonoBehaviour
         station.GetComponent<Renderer>().material = material;
         RanchStation component = station.AddComponent<RanchStation>();
         component.Initialize(core, type);
-        CreateLabel(station.transform, label, new Vector3(0f, type == RanchStationType.Shop ? 2.2f : 1.8f, 0f), false);
+        TextMesh labelMesh = CreateLabel(
+            station.transform,
+            label,
+            new Vector3(0f, type == RanchStationType.Shop ? 2.2f : 1.8f, 0f),
+            false
+        );
+
+        if (type == RanchStationType.CJGate)
+        {
+            labelMesh.color = Color.white;
+            core.CJ.RegisterGateVisual(station.transform, labelMesh);
+        }
+
         return station;
     }
 
@@ -246,6 +263,107 @@ public class RanchWorldBuilder : MonoBehaviour
         return piece;
     }
 
+    private Transform CreateCJArena(
+        Transform parent,
+        out Transform playerStart,
+        out Transform bossSpawn)
+    {
+        Transform root = new GameObject("CJ Final Boss Arena").transform;
+        root.SetParent(parent);
+        root.position = new Vector3(8f, 0f, 22f);
+
+        CreatePrimitive(
+            root,
+            PrimitiveType.Cube,
+            "CJ Arena Floor",
+            new Vector3(0f, -0.25f, 0f),
+            new Vector3(18f, 0.5f, 20f),
+            gray,
+            true
+        );
+
+        CreatePrimitive(
+            root,
+            PrimitiveType.Cube,
+            "CJ Arena Left Wall",
+            new Vector3(-9f, 2.5f, 0f),
+            new Vector3(0.6f, 5f, 20f),
+            black,
+            true
+        );
+
+        CreatePrimitive(
+            root,
+            PrimitiveType.Cube,
+            "CJ Arena Right Wall",
+            new Vector3(9f, 2.5f, 0f),
+            new Vector3(0.6f, 5f, 20f),
+            black,
+            true
+        );
+
+        CreatePrimitive(
+            root,
+            PrimitiveType.Cube,
+            "CJ Arena Back Wall",
+            new Vector3(0f, 2.5f, 10f),
+            new Vector3(18f, 5f, 0.6f),
+            black,
+            true
+        );
+
+        CreatePrimitive(
+            root,
+            PrimitiveType.Cylinder,
+            "CJ Left Golden Pillar",
+            new Vector3(-6.5f, 3f, 7f),
+            new Vector3(0.8f, 3f, 0.8f),
+            gold,
+            true
+        );
+
+        CreatePrimitive(
+            root,
+            PrimitiveType.Cylinder,
+            "CJ Right Golden Pillar",
+            new Vector3(6.5f, 3f, 7f),
+            new Vector3(0.8f, 3f, 0.8f),
+            gold,
+            true
+        );
+
+        CreatePrimitive(
+            root,
+            PrimitiveType.Cube,
+            "CJ Ranchenator Platform",
+            new Vector3(0f, 0.25f, 5f),
+            new Vector3(6f, 0.5f, 5f),
+            red,
+            true
+        );
+
+        GameObject playerMarker = new GameObject("CJ Arena Player Start");
+        playerMarker.transform.SetParent(root, false);
+        playerMarker.transform.localPosition = new Vector3(0f, 1.1f, -7f);
+        playerMarker.transform.localRotation = Quaternion.identity;
+        playerStart = playerMarker.transform;
+
+        GameObject bossMarker = new GameObject("CJ Arena Boss Spawn");
+        bossMarker.transform.SetParent(root, false);
+        bossMarker.transform.localPosition = new Vector3(0f, 1.1f, 5f);
+        bossMarker.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+        bossSpawn = bossMarker.transform;
+
+        CreateLabel(
+            root,
+            "CJ FINAL BOSS ARENA\nCLEAR 30 WAVES TO ENTER",
+            new Vector3(0f, 6.5f, 7.5f),
+            false
+        ).color = new Color(1f, 0.75f, 0.1f);
+
+        return root;
+    }
+
     private void CreateDecorations(Transform parent)
     {
         for (int i = 0; i < 14; i++)
@@ -260,7 +378,7 @@ public class RanchWorldBuilder : MonoBehaviour
         }
     }
 
-    private void CreateLabel(Transform target, string text, Vector3 offset, bool scaleHeight)
+    private TextMesh CreateLabel(Transform target, string text, Vector3 offset, bool scaleHeight)
     {
         GameObject labelObject = new GameObject(target.name + " Label");
         TextMesh mesh = labelObject.AddComponent<TextMesh>();
@@ -272,5 +390,6 @@ public class RanchWorldBuilder : MonoBehaviour
         mesh.color = Color.black;
         RanchWorldLabel label = labelObject.AddComponent<RanchWorldLabel>();
         label.Initialize(target, offset, scaleHeight);
+        return mesh;
     }
 }

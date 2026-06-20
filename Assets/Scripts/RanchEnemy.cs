@@ -8,6 +8,7 @@ public class RanchEnemy : MonoBehaviour
     public float Damage { get; private set; }
     public int Tier { get; private set; }
     public bool IsBoss { get; private set; }
+    public bool IsFinalCJ { get; private set; }
     public int SpawnWave { get; private set; }
 
     public float DistanceToPlayer => core == null || core.Player == null
@@ -26,6 +27,7 @@ public class RanchEnemy : MonoBehaviour
     private Vector3 knockbackVelocity;
     private bool bossPhaseTwo;
     private bool bossPhaseThree;
+    private RanchCJSystem finalCJOwner;
 
     public void Initialize(RanchGameCore gameCore, RanchWaveSystem waveOwner,
         Transform playerTarget, int enemyTier, int serial, int wave)
@@ -57,6 +59,21 @@ public class RanchEnemy : MonoBehaviour
         UpdateLabel();
     }
 
+    public void MakeFinalCJ(RanchCJSystem cjOwner)
+    {
+        finalCJOwner = cjOwner;
+        IsBoss = true;
+        IsFinalCJ = true;
+        EnemyName = "CJ, the Ultimate Ranchenator";
+        MaxHealth = Mathf.Max(5000f, MaxHealth * 10f);
+        Health = MaxHealth;
+        Damage = Mathf.Clamp(Damage * 0.72f, 28f, 55f);
+        speed = Mathf.Max(speed, 2.15f);
+        specialTimer = 2.5f;
+        transform.localScale = Vector3.one * 2.6f;
+        UpdateLabel();
+    }
+
     private void Update()
     {
         if (core == null || target == null || core.GameWon || core.Health.IsDead ||
@@ -74,7 +91,8 @@ public class RanchEnemy : MonoBehaviour
             knockbackVelocity = Vector3.Lerp(knockbackVelocity, Vector3.zero, 8f * Time.deltaTime);
         }
 
-        if (IsBoss) UpdateBoss();
+        if (IsFinalCJ) UpdateFinalCJ();
+        else if (IsBoss) UpdateBoss();
         else
         {
             switch (Tier)
@@ -197,6 +215,78 @@ public class RanchEnemy : MonoBehaviour
         }
     }
 
+    private void UpdateFinalCJ()
+    {
+        float healthPercent = MaxHealth <= 0f ? 0f : Health / MaxHealth;
+
+        if (!bossPhaseTwo && healthPercent <= 0.66f)
+        {
+            bossPhaseTwo = true;
+            speed *= 1.14f;
+            Damage *= 1.08f;
+            finalCJOwner?.NotifyBossPhaseChanged(2);
+        }
+
+        if (!bossPhaseThree && healthPercent <= 0.33f)
+        {
+            bossPhaseThree = true;
+            speed *= 1.20f;
+            Damage *= 1.14f;
+            finalCJOwner?.NotifyBossPhaseChanged(3);
+        }
+
+        float distance = Vector3.Distance(transform.position, target.position);
+        specialTimer -= Time.deltaTime;
+
+        if (!bossPhaseTwo)
+        {
+            MoveToward(target.position, speed, 2.1f);
+
+            if (specialTimer <= 0f && distance <= 9f)
+            {
+                specialTimer = 4.1f;
+                core.Health.TakeDamage(Damage * 0.82f, EnemyName + " corporate shockwave", this);
+                core.Player.ApplyKnockback(target.position - transform.position, 5.5f);
+            }
+            else if (distance <= 2.5f)
+            {
+                TryAttack(Damage, 1.05f, "slashed");
+            }
+        }
+        else if (!bossPhaseThree)
+        {
+            MoveToward(target.position, speed * 1.08f, 1.9f);
+
+            if (specialTimer <= 0f && distance <= 7f)
+            {
+                specialTimer = 3f;
+                Vector3 charge = (target.position - transform.position).normalized;
+                transform.position += charge * 2.8f;
+                core.Player.ApplySlow(0.68f, 1.8f);
+                core.Health.TakeDamage(Damage, EnemyName + " hostile takeover charge", this);
+            }
+            else if (distance <= 2.3f)
+            {
+                TryAttack(Damage * 1.06f, 0.82f, "combo-struck");
+            }
+        }
+        else
+        {
+            MoveToward(target.position, speed * 1.15f, 1.75f);
+
+            if (specialTimer <= 0f && distance <= 10f)
+            {
+                specialTimer = 2.15f;
+                core.Health.TakeDamage(Damage * 1.18f, EnemyName + " Ultimate Ranchenator blast", this);
+                core.Player.ApplyKnockback(target.position - transform.position, 7.5f);
+            }
+            else if (distance <= 2.2f)
+            {
+                TryAttack(Damage * 1.12f, 0.62f, "final-phase struck");
+            }
+        }
+    }
+
     private void MoveToward(Vector3 destination, float moveSpeed, float stopDistance)
     {
         destination.y = transform.position.y;
@@ -234,7 +324,7 @@ public class RanchEnemy : MonoBehaviour
             return;
         }
 
-        float armor = IsBoss ? 0.22f : (Tier == 3 ? 0.34f : 0f);
+        float armor = IsFinalCJ ? 0.18f : (IsBoss ? 0.22f : (Tier == 3 ? 0.34f : 0f));
         float finalDamage = armorPiercing ? amount : amount * (1f - armor);
         Health -= Mathf.Max(1f, finalDamage);
 
@@ -256,6 +346,14 @@ public class RanchEnemy : MonoBehaviour
 
     private void Die()
     {
+        if (IsFinalCJ)
+        {
+            owner.NotifyEnemyDefeated(this);
+            finalCJOwner?.NotifyCJDefeated(this);
+            Destroy(gameObject);
+            return;
+        }
+
         float reward = (12f + Tier * 18f) * (IsBoss ? 2f : 1f);
         core.Inventory.AddMoney(reward);
         core.Progression.AddExperience(IsBoss ? 0f : 18f + Tier * 12f + SpawnWave * 2f, "Enemy defeated");
@@ -283,7 +381,7 @@ public class RanchEnemy : MonoBehaviour
     private void UpdateLabel()
     {
         if (healthLabel != null)
-            healthLabel.text = $"{(IsBoss ? "BOSS: " : "")}{EnemyName}\n{Mathf.CeilToInt(Mathf.Max(0f, Health))}/{Mathf.CeilToInt(MaxHealth)} HP";
+            healthLabel.text = $"{(IsFinalCJ ? "FINAL BOSS: " : (IsBoss ? "BOSS: " : ""))}{EnemyName}\n{Mathf.CeilToInt(Mathf.Max(0f, Health))}/{Mathf.CeilToInt(MaxHealth)} HP";
     }
 
     public static string GetEnemyName(int tier)

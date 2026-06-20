@@ -4,7 +4,14 @@ using UnityEngine;
 
 public class RanchWaveSystem : MonoBehaviour
 {
-    public enum WaveState { WaitingForTree, Intermission, Spawning, Fighting }
+    public enum WaveState
+    {
+        WaitingForTree,
+        Intermission,
+        Spawning,
+        Fighting,
+        AwaitingCJ
+    }
 
     public int CurrentWave { get; private set; }
     public int HighestWaveCleared { get; private set; }
@@ -14,10 +21,19 @@ public class RanchWaveSystem : MonoBehaviour
     public float EnemySpawnDelay = 0.75f;
     public int MaximumEnemiesPerWave = 30;
 
-    public float SecondsUntilNextWave => CurrentState == WaveState.Intermission ? Mathf.Max(0f, timer) : 0f;
-    public int EnemiesRemaining => activeEnemies.Count +
-        (CurrentState == WaveState.Spawning ? Mathf.Max(0, enemiesInWave - enemiesSpawned) : 0);
+    public float SecondsUntilNextWave =>
+        CurrentState == WaveState.Intermission
+            ? Mathf.Max(0f, timer)
+            : 0f;
+
+    public int EnemiesRemaining =>
+        activeEnemies.Count +
+        (CurrentState == WaveState.Spawning
+            ? Mathf.Max(0, enemiesInWave - enemiesSpawned)
+            : 0);
+
     public List<RanchEnemy> ActiveEnemies => activeEnemies;
+    public bool FinalBattleSuspended => finalBattleSuspended;
 
     private readonly List<RanchEnemy> activeEnemies = new List<RanchEnemy>();
     private RanchGameCore core;
@@ -31,6 +47,7 @@ public class RanchWaveSystem : MonoBehaviour
     private float spawnTimer;
     private int lastAnnounced = -1;
     private string lastReward = "";
+    private bool finalBattleSuspended;
 
     public void Initialize(RanchGameCore gameCore)
     {
@@ -47,31 +64,46 @@ public class RanchWaveSystem : MonoBehaviour
 
     private void Update()
     {
-        if (core == null || core.GameWon || core.Health.IsDead || core.Shop.IsOpen || core.Progression.IsOpen) return;
+        if (core == null || core.GameWon || core.Health.IsDead ||
+            core.Shop.IsOpen || core.Progression.IsOpen)
+            return;
+
         activeEnemies.RemoveAll(enemy => enemy == null);
+
+        if (finalBattleSuspended || CurrentState == WaveState.AwaitingCJ)
+            return;
 
         if (CurrentState == WaveState.WaitingForTree)
         {
             if (core.Tree.Stage >= 1)
             {
                 BeginIntermission(FirstWaveDelay);
-                core.ShowMessage($"The Ranch Tree attracted Raiders. Wave {CurrentWave + 1} begins in {Mathf.CeilToInt(FirstWaveDelay)} seconds.");
+                core.ShowMessage(
+                    $"The Ranch Tree attracted Raiders. Wave {CurrentWave + 1} begins in {Mathf.CeilToInt(FirstWaveDelay)} seconds."
+                );
             }
+
             return;
         }
 
-        if (CurrentState == WaveState.Intermission) UpdateIntermission();
-        else if (CurrentState == WaveState.Spawning) UpdateSpawning();
-        else if (CurrentState == WaveState.Fighting && activeEnemies.Count == 0) CompleteWave();
+        if (CurrentState == WaveState.Intermission)
+            UpdateIntermission();
+        else if (CurrentState == WaveState.Spawning)
+            UpdateSpawning();
+        else if (CurrentState == WaveState.Fighting && activeEnemies.Count == 0)
+            CompleteWave();
     }
 
     public RanchEnemy GetNearestEnemy(float range)
     {
         RanchEnemy nearest = null;
         float nearestDistance = range;
+
         foreach (RanchEnemy enemy in activeEnemies)
         {
-            if (enemy == null) continue;
+            if (enemy == null)
+                continue;
+
             float distance = enemy.DistanceToPlayer;
             if (distance <= nearestDistance)
             {
@@ -79,27 +111,43 @@ public class RanchWaveSystem : MonoBehaviour
                 nearestDistance = distance;
             }
         }
+
         return nearest;
     }
 
     public void AttackNearestEnemy(float damage, float range, bool showMiss)
     {
         RanchEnemy nearest = GetNearestEnemy(range);
-        if (nearest != null) nearest.TakeDamage(damage);
-        else if (showMiss) core.ShowMessage("No Ranch Raider is within sword range.");
+
+        if (nearest != null)
+            nearest.TakeDamage(damage);
+        else if (showMiss)
+            core.ShowMessage("No Ranch Raider is within sword range.");
     }
 
     public void DamageNearestFromDefense(float damage, float range)
     {
+        if (finalBattleSuspended)
+            return;
+
         RanchEnemy nearest = null;
         float nearestDistance = range;
+
         foreach (RanchEnemy enemy in activeEnemies)
         {
-            if (enemy == null || tree == null) continue;
+            if (enemy == null || tree == null)
+                continue;
+
             float distance = Vector3.Distance(tree.position, enemy.transform.position);
-            if (distance <= nearestDistance) { nearest = enemy; nearestDistance = distance; }
+            if (distance <= nearestDistance)
+            {
+                nearest = enemy;
+                nearestDistance = distance;
+            }
         }
-        if (nearest != null) nearest.TakeDamage(damage, true, 0f);
+
+        if (nearest != null)
+            nearest.TakeDamage(damage, true, 0f);
     }
 
     public void NotifyEnemyDefeated(RanchEnemy enemy)
@@ -109,15 +157,44 @@ public class RanchWaveSystem : MonoBehaviour
 
     public string GetBannerText()
     {
-        if (CurrentState == WaveState.WaitingForTree) return "RAIDER WAVES LOCKED";
-        if (CurrentState == WaveState.Intermission) return $"WAVE {CurrentWave + 1} IN {Mathf.CeilToInt(SecondsUntilNextWave)}s";
-        if (core.Bosses.BossAlive) return $"BOSS: {core.Bosses.CurrentBossName} — {EnemiesRemaining} ENEMIES";
+        if (core.CJ.FinalBattleActive)
+            return "FINAL BOSS — CJ, THE ULTIMATE RANCHENATOR";
+
+        if (CurrentState == WaveState.AwaitingCJ)
+            return "WAVE 30 CLEARED — CJ GATE READY";
+
+        if (CurrentState == WaveState.WaitingForTree)
+            return "RAIDER WAVES LOCKED";
+
+        if (CurrentState == WaveState.Intermission)
+            return $"WAVE {CurrentWave + 1} IN {Mathf.CeilToInt(SecondsUntilNextWave)}s";
+
+        if (core.Bosses.BossAlive)
+            return $"BOSS: {core.Bosses.CurrentBossName} — {EnemiesRemaining} ENEMIES";
+
         return $"WAVE {CurrentWave} — {EnemiesRemaining} RAIDERS REMAINING";
     }
 
     public string GetStatusText()
     {
         StringBuilder text = new StringBuilder();
+
+        if (core.CJ.FinalBattleActive)
+        {
+            text.AppendLine("REGULAR WAVES SUSPENDED");
+            text.AppendLine();
+            text.AppendLine("The final CJ battle is active in the arena.");
+            return text.ToString();
+        }
+
+        if (CurrentState == WaveState.AwaitingCJ)
+        {
+            text.AppendLine("30 WAVES CLEARED");
+            text.AppendLine();
+            text.AppendLine("The CJ Gate is ready. Travel to the gate and press E to start the final boss battle.");
+            return text.ToString();
+        }
+
         if (CurrentState == WaveState.WaitingForTree)
         {
             text.AppendLine("Waves locked\n");
@@ -129,16 +206,27 @@ public class RanchWaveSystem : MonoBehaviour
             text.AppendLine($"Next wave: {next}");
             text.AppendLine($"Begins in: {FormatTime(timer)}");
             text.AppendLine($"Expected enemies: {CalculateWaveSize(next)}");
-            text.AppendLine(core.Bosses.IsBossWave(next) ? $"BOSS: {core.Bosses.GetBossName(next)}" : $"Expected types: {GetPreview(next)}");
-            if (!string.IsNullOrEmpty(lastReward)) text.AppendLine("\n" + lastReward);
+            text.AppendLine(
+                core.Bosses.IsBossWave(next)
+                    ? $"BOSS: {core.Bosses.GetBossName(next)}"
+                    : $"Expected types: {GetPreview(next)}"
+            );
+
+            if (!string.IsNullOrEmpty(lastReward))
+                text.AppendLine("\n" + lastReward);
         }
         else
         {
             text.AppendLine($"Wave {CurrentWave} ACTIVE");
             text.AppendLine($"Enemies remaining: {EnemiesRemaining}");
             text.AppendLine($"Spawned: {enemiesSpawned} / {enemiesInWave}");
-            text.AppendLine(core.Bosses.BossAlive ? $"Boss: {core.Bosses.CurrentBossName}" : $"Types: {GetPreview(CurrentWave)}");
+            text.AppendLine(
+                core.Bosses.BossAlive
+                    ? $"Boss: {core.Bosses.CurrentBossName}"
+                    : $"Types: {GetPreview(CurrentWave)}"
+            );
         }
+
         return text.ToString();
     }
 
@@ -146,26 +234,39 @@ public class RanchWaveSystem : MonoBehaviour
     {
         timer -= Time.deltaTime;
         int seconds = Mathf.CeilToInt(Mathf.Max(0f, timer));
+
         if (seconds != lastAnnounced)
         {
             lastAnnounced = seconds;
+
             if (seconds == 10 || (seconds >= 1 && seconds <= 5))
-                core.ShowMessage($"Ranch Raider Wave {CurrentWave + 1} begins in {seconds} second{(seconds == 1 ? "" : "s")}.");
+            {
+                core.ShowMessage(
+                    $"Ranch Raider Wave {CurrentWave + 1} begins in {seconds} second{(seconds == 1 ? "" : "s")}."
+                );
+            }
         }
-        if (timer <= 0f) StartWave();
+
+        if (timer <= 0f)
+            StartWave();
     }
 
     private void UpdateSpawning()
     {
         spawnTimer -= Time.deltaTime;
+
         if (enemiesSpawned < enemiesInWave && spawnTimer <= 0f)
         {
             SpawnEnemy(enemiesSpawned);
             enemiesSpawned++;
             spawnTimer = EnemySpawnDelay;
         }
-        if (enemiesSpawned >= enemiesInWave) CurrentState = WaveState.Fighting;
-        if (enemiesSpawned >= enemiesInWave && activeEnemies.Count == 0) CompleteWave();
+
+        if (enemiesSpawned >= enemiesInWave)
+            CurrentState = WaveState.Fighting;
+
+        if (enemiesSpawned >= enemiesInWave && activeEnemies.Count == 0)
+            CompleteWave();
     }
 
     private void BeginIntermission(float duration)
@@ -177,14 +278,22 @@ public class RanchWaveSystem : MonoBehaviour
 
     private void StartWave()
     {
+        if (HighestWaveCleared >= RanchCJSystem.RequiredWaves)
+        {
+            CurrentState = WaveState.AwaitingCJ;
+            return;
+        }
+
         CurrentWave++;
         enemiesInWave = CalculateWaveSize(CurrentWave);
         enemiesSpawned = 0;
         spawnTimer = 0f;
         CurrentState = WaveState.Spawning;
+
         string startText = core.Bosses.IsBossWave(CurrentWave)
             ? $"BOSS WAVE {CurrentWave} — {core.Bosses.GetBossName(CurrentWave)} is approaching!"
             : $"WAVE {CurrentWave} STARTED — {enemiesInWave} Raiders incoming. Types: {GetPreview(CurrentWave)}";
+
         core.ShowMessage(startText, 7f);
     }
 
@@ -194,74 +303,207 @@ public class RanchWaveSystem : MonoBehaviour
         float money = 50f * CurrentWave * (1f + core.Tree.Stage * 0.35f);
         float ranch = 8f * CurrentWave * (1f + core.Tree.Stage * 0.2f);
         float xp = 45f + CurrentWave * 12f;
+
         core.Inventory.AddMoney(money);
         core.Inventory.AddRawRanch(ranch);
         core.Progression.AddExperience(xp, "Wave cleared");
         core.AddCJHeat(4 + CurrentWave);
+
         lastReward = $"Last reward: ${money:F0}, {ranch:F0} Ranch, {xp:F0} XP.";
-        core.ShowMessage($"WAVE {CurrentWave} CLEARED. {lastReward}", 7f);
         core.Save.RequestSave();
+        core.CJ.NotifyWaveCleared(CurrentWave);
+
+        if (HighestWaveCleared >= RanchCJSystem.RequiredWaves)
+        {
+            CurrentState = WaveState.AwaitingCJ;
+            core.ShowMessage(
+                $"WAVE {CurrentWave} CLEARED. {lastReward} The CJ Gate is now ready.",
+                12f
+            );
+            return;
+        }
+
+        core.ShowMessage($"WAVE {CurrentWave} CLEARED. {lastReward}", 7f);
         BeginIntermission(IntermissionDuration);
     }
 
     private int CalculateWaveSize(int wave)
     {
         int size = 2 + wave + Mathf.Clamp(core.Tree.Stage, 1, 4);
-        if (core.Bosses.IsBossWave(wave)) size = Mathf.Max(4, size - 2);
+
+        if (core.Bosses.IsBossWave(wave))
+            size = Mathf.Max(4, size - 2);
+
         return Mathf.Clamp(size, 3, MaximumEnemiesPerWave);
     }
 
     private void SpawnEnemy(int index)
     {
-        if (tree == null || player == null) return;
+        if (tree == null || player == null)
+            return;
+
         serial++;
         bool bossSpawn = core.Bosses.IsBossWave(CurrentWave) && index == enemiesInWave - 1;
-        int tier = bossSpawn ? Mathf.Min(4, Mathf.Max(1, core.Tree.Stage)) : ChooseTier(CurrentWave, index);
+        int tier = bossSpawn
+            ? Mathf.Min(4, Mathf.Max(1, core.Tree.Stage))
+            : ChooseTier(CurrentWave, index);
+
         float angle = Random.Range(0f, Mathf.PI * 2f);
         float radius = Random.Range(17f, 23f);
-        Vector3 position = tree.position + new Vector3(Mathf.Cos(angle) * radius, 1f, Mathf.Sin(angle) * radius);
+        Vector3 position = tree.position +
+            new Vector3(Mathf.Cos(angle) * radius, 1f, Mathf.Sin(angle) * radius);
 
         GameObject enemyObject = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        enemyObject.name = bossSpawn ? core.Bosses.GetBossName(CurrentWave) : $"Wave {CurrentWave} {RanchEnemy.GetEnemyName(tier)} {serial}";
+        enemyObject.name = bossSpawn
+            ? core.Bosses.GetBossName(CurrentWave)
+            : $"Wave {CurrentWave} {RanchEnemy.GetEnemyName(tier)} {serial}";
         enemyObject.transform.position = position;
-        if (container != null) enemyObject.transform.SetParent(container);
-        enemyObject.GetComponent<Renderer>().material = RanchWorldBuilder.CreateRuntimeMaterial(bossSpawn ? new Color(0.85f, 0.08f, 0.08f) : GetTierColor(tier));
+
+        if (container != null)
+            enemyObject.transform.SetParent(container);
+
+        enemyObject.GetComponent<Renderer>().material =
+            RanchWorldBuilder.CreateRuntimeMaterial(
+                bossSpawn
+                    ? new Color(0.85f, 0.08f, 0.08f)
+                    : GetTierColor(tier)
+            );
 
         RanchEnemy enemy = enemyObject.AddComponent<RanchEnemy>();
         enemy.Initialize(core, this, player, tier, serial, CurrentWave);
         activeEnemies.Add(enemy);
-        if (bossSpawn) core.Bosses.ConfigureBoss(enemy, CurrentWave);
+
+        if (bossSpawn)
+            core.Bosses.ConfigureBoss(enemy, CurrentWave);
+    }
+
+    public void PrepareForFinalBattle()
+    {
+        foreach (RanchEnemy enemy in activeEnemies)
+        {
+            if (enemy != null)
+                Destroy(enemy.gameObject);
+        }
+
+        activeEnemies.Clear();
+        enemiesInWave = 0;
+        enemiesSpawned = 0;
+        finalBattleSuspended = true;
+        CurrentState = WaveState.AwaitingCJ;
+        core.Bosses.ResetBossState();
+    }
+
+    public void RegisterFinalBattleEnemy(RanchEnemy enemy)
+    {
+        if (enemy == null)
+            return;
+
+        finalBattleSuspended = true;
+
+        if (container != null)
+            enemy.transform.SetParent(container);
+
+        if (!activeEnemies.Contains(enemy))
+            activeEnemies.Add(enemy);
+    }
+
+    public void SpawnFinalBattleGuard(Vector3 center, int guardIndex)
+    {
+        if (!finalBattleSuspended || player == null)
+            return;
+
+        serial++;
+        float angle = guardIndex * Mathf.PI + Random.Range(-0.45f, 0.45f);
+        float radius = Random.Range(4.5f, 7f);
+        Vector3 position = center +
+            new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+        position.y = 1f;
+
+        int tier = guardIndex % 2 == 0 ? 4 : 3;
+        GameObject guardObject = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        guardObject.name = $"CJ Arena Guard {serial}";
+        guardObject.transform.position = position;
+
+        if (container != null)
+            guardObject.transform.SetParent(container);
+
+        guardObject.GetComponent<Renderer>().material =
+            RanchWorldBuilder.CreateRuntimeMaterial(
+                tier == 4
+                    ? new Color(0.08f, 0.08f, 0.08f)
+                    : new Color(0.35f, 0.05f, 0.05f)
+            );
+
+        RanchEnemy guard = guardObject.AddComponent<RanchEnemy>();
+        guard.Initialize(core, this, player, tier, serial, RanchCJSystem.RequiredWaves);
+        activeEnemies.Add(guard);
+    }
+
+    public void EndFinalBattle()
+    {
+        foreach (RanchEnemy enemy in activeEnemies)
+        {
+            if (enemy != null)
+                Destroy(enemy.gameObject);
+        }
+
+        activeEnemies.Clear();
+        finalBattleSuspended = false;
+        CurrentState = WaveState.AwaitingCJ;
     }
 
     private int ChooseTier(int wave, int index)
     {
-        int maximum = Mathf.Min(Mathf.Clamp(core.Tree.Stage, 0, 4), Mathf.Clamp((wave + 1) / 3, 0, 4));
+        int maximum = Mathf.Min(
+            Mathf.Clamp(core.Tree.Stage, 0, 4),
+            Mathf.Clamp((wave + 1) / 3, 0, 4)
+        );
+
         return Random.Range(Mathf.Max(0, maximum - 1), maximum + 1);
     }
 
     private string GetPreview(int wave)
     {
-        int maximum = Mathf.Min(Mathf.Clamp(core.Tree.Stage, 0, 4), Mathf.Clamp((wave + 1) / 3, 0, 4));
+        int maximum = Mathf.Min(
+            Mathf.Clamp(core.Tree.Stage, 0, 4),
+            Mathf.Clamp((wave + 1) / 3, 0, 4)
+        );
         int minimum = Mathf.Max(0, maximum - 1);
-        return minimum == maximum ? RanchEnemy.GetEnemyName(maximum) :
-            $"{RanchEnemy.GetEnemyName(minimum)} / {RanchEnemy.GetEnemyName(maximum)}";
+
+        return minimum == maximum
+            ? RanchEnemy.GetEnemyName(maximum)
+            : $"{RanchEnemy.GetEnemyName(minimum)} / {RanchEnemy.GetEnemyName(maximum)}";
     }
 
     public void PrepareForLoad()
     {
         foreach (RanchEnemy enemy in activeEnemies)
-            if (enemy != null) Destroy(enemy.gameObject);
+        {
+            if (enemy != null)
+                Destroy(enemy.gameObject);
+        }
+
         activeEnemies.Clear();
         enemiesInWave = 0;
         enemiesSpawned = 0;
+        finalBattleSuspended = false;
     }
 
     public void RestoreProgress(int highestWaveCleared)
     {
-        HighestWaveCleared = Mathf.Max(0, highestWaveCleared);
+        HighestWaveCleared = Mathf.Clamp(
+            highestWaveCleared,
+            0,
+            RanchCJSystem.RequiredWaves
+        );
         CurrentWave = HighestWaveCleared;
-        if (core.Tree.Stage >= 1) BeginIntermission(8f);
-        else CurrentState = WaveState.WaitingForTree;
+
+        if (HighestWaveCleared >= RanchCJSystem.RequiredWaves)
+            CurrentState = WaveState.AwaitingCJ;
+        else if (core.Tree.Stage >= 1)
+            BeginIntermission(8f);
+        else
+            CurrentState = WaveState.WaitingForTree;
     }
 
     private static string FormatTime(float seconds)

@@ -135,8 +135,27 @@ public class RanchGameCore : MonoBehaviour
 
     private void Update()
     {
-        if (StatusMessageTime > 0f) StatusMessageTime -= Time.unscaledDeltaTime;
-        if ((GameWon || (Health != null && Health.IsDead)) && Input.GetKeyDown(KeyCode.R))
+        if (StatusMessageTime > 0f)
+            StatusMessageTime -= Time.unscaledDeltaTime;
+
+        if (GameWon && Input.GetKeyDown(KeyCode.R))
+        {
+            RestartAfterVictory();
+            return;
+        }
+
+        if (Health != null && Health.IsDead && Input.GetKeyDown(KeyCode.R))
             RestartScene();
+    }
+
+    private void RestartAfterVictory()
+    {
+        Time.timeScale = 1f;
+
+        if (Save != null)
+            Save.DeleteSave();
+
+        Scene scene = SceneManager.GetActiveScene();
+        SceneManager.LoadScene(scene.name);
     }
 }

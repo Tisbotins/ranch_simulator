@@ -25,7 +25,7 @@ public class RanchStation : RanchInteractable
                 case RanchStationType.BottleUpgrade: return "Press E: Unlock next bottle size";
                 case RanchStationType.ToolUpgrade: return "Press E: Upgrade Ranch extracting tool";
                 case RanchStationType.Drew: return core.Drew.IsHired ? "Press E: Upgrade Drew" : "Press E: Hire Drew";
-                case RanchStationType.CJGate: return core.CJ.BattleUnlocked ? "Press E: Challenge CJ" : "CJ Gate locked: sell more Ranch";
+                case RanchStationType.CJGate: return core.CJ.GetGatePrompt();
                 case RanchStationType.Shop: return "Press E: Open Ranch Empire Shop";
                 default: return "Press E";
             }
