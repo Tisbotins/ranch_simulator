@@ -24,10 +24,9 @@ public class RanchWorldBuilder : MonoBehaviour
         GameObject bottleStation = CreateStation(world, "Bottle Station", new Vector3(-8f, 0.5f, 0f), blue, RanchStationType.Bottle, "BOTTLE STATION");
         CreateStation(world, "Sell Station", new Vector3(8f, 0.5f, 0f), yellow, RanchStationType.Sell, "SELL STATION");
         CreateStation(world, "Bottle Upgrade Station", new Vector3(0f, 0.5f, -8f), red, RanchStationType.BottleUpgrade, "BOTTLE UPGRADES");
-        CreateStation(world, "Extractor Upgrade Station", new Vector3(7f, 0.5f, -8f), purple, RanchStationType.ToolUpgrade, "EXTRACTOR UPGRADES");
         CreateStation(world, "Drew Station", new Vector3(-8f, 0.5f, -8f), white, RanchStationType.Drew, "DREW STATION");
         CreateStation(world, "CJ Gate", new Vector3(8f, 0.5f, 8f), black, RanchStationType.CJGate, "CJ GATE");
-        CreateStation(world, "Ranch Empire Shop Terminal", new Vector3(4f, 0.8f, -4.5f), teal, RanchStationType.Shop, "RANCH EMPIRE SHOP\nPress E or P");
+        CreateStation(world, "Ranch Empire Shop Terminal", new Vector3(7f, 0.5f, -8f), teal, RanchStationType.Shop, "RANCH EMPIRE SHOP\nPress E or P");
 
         RanchPlayerController player = CreatePlayer(world);
         GameObject drew = CreateDrew(world);
