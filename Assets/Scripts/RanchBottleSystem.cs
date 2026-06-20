@@ -115,4 +115,26 @@ public class RanchBottleSystem : MonoBehaviour
     }
 
     private bool ValidTier(int tier) => tier >= 0 && tier < TierCount;
+
+    public void BottleAllSelected()
+    {
+    int capacity = GetCapacity(SelectedTier);
+    int made = 0;
+
+    while (core.Inventory.RawRanch >= capacity)
+    {
+        core.Inventory.TrySpendRawRanch(capacity);
+        core.Inventory.AddBottle(SelectedTier);
+        made++;
+    }
+
+    if (made > 0)
+    {
+        core.ShowMessage("Instant bottled " + made + " " + GetTierName(SelectedTier) + "(s).");
+    }
+    else
+    {
+        core.ShowMessage("Not enough Ranch to bottle.");
+    }
+    }
 }

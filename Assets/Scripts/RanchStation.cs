@@ -20,7 +20,7 @@ public class RanchStation : RanchInteractable
             if (core == null) return "Station unavailable";
             switch (StationType)
             {
-                case RanchStationType.Bottle: return "Press E: Fill selected bottle | [ and ] change bottle";
+                case RanchStationType.Bottle: return "Press E: Fill selected bottle | Shift + E: Instant bottle all | [ and ] change bottle";
                 case RanchStationType.Sell: return "Press E: Sell one | Shift + E: Sell all selected";
                 case RanchStationType.BottleUpgrade: return "Press E: Unlock next bottle size";
                 case RanchStationType.ToolUpgrade: return "Press E: Upgrade Ranch extracting tool";
@@ -37,7 +37,16 @@ public class RanchStation : RanchInteractable
         if (held || core == null) return;
         switch (StationType)
         {
-            case RanchStationType.Bottle: core.Bottles.TryBottleSelected(); break;
+            case RanchStationType.Bottle:
+                if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                {
+                core.Bottles.BottleAllSelected();
+                }
+                else
+                {
+                core.Bottles.TryBottleSelected();
+                }
+                break;
             case RanchStationType.Sell:
                 if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) core.Bottles.SellAllSelected();
                 else core.Bottles.SellOneSelected();
