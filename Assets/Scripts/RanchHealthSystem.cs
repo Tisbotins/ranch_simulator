@@ -30,19 +30,28 @@ public class RanchHealthSystem : MonoBehaviour
     private void Update()
     {
         if (DamageFlashTime > 0f) DamageFlashTime -= Time.unscaledDeltaTime;
-        if (IsDead || core == null || core.GameWon || core.Shop.IsOpen) return;
-
+        if (IsDead || core == null || core.GameWon || core.Shop.IsOpen || core.Progression.IsOpen) return;
         if (RegenerationPerSecond > 0f && CurrentHealth < MaxHealth)
             CurrentHealth = Mathf.Min(MaxHealth, CurrentHealth + RegenerationPerSecond * Time.deltaTime);
     }
 
-    public void TakeDamage(float rawDamage, string source)
+    public void TakeDamage(float rawDamage, string source, RanchEnemy attacker = null)
     {
         if (IsDead || rawDamage <= 0f) return;
-        float finalDamage = Mathf.Max(1f, rawDamage * (1f - armorValues[ArmorLevel]));
+
+        string combatResult;
+        float combatAdjusted = core.Combat.ResolveIncomingDamage(rawDamage, attacker, out combatResult);
+        if (combatAdjusted <= 0f)
+        {
+            if (!string.IsNullOrEmpty(combatResult)) core.ShowMessage(combatResult + "!");
+            return;
+        }
+
+        float finalDamage = Mathf.Max(1f, combatAdjusted * (1f - armorValues[ArmorLevel]));
         CurrentHealth = Mathf.Max(0f, CurrentHealth - finalDamage);
         DamageFlashTime = 0.2f;
-        core.ShowMessage($"{source} hit you for {finalDamage:F0} damage.");
+        string prefix = string.IsNullOrEmpty(combatResult) ? "" : combatResult + " — ";
+        core.ShowMessage($"{prefix}{source} hit you for {finalDamage:F0} damage.");
         if (CurrentHealth <= 0f) Die();
     }
 
@@ -64,6 +73,8 @@ public class RanchHealthSystem : MonoBehaviour
         float oldMax = MaxHealth;
         HealthLevel++;
         CurrentHealth = Mathf.Min(MaxHealth, CurrentHealth + MaxHealth - oldMax);
+        core.Progression.AddExperience(25f + HealthLevel * 8f, "Health upgrade");
+        core.Save.RequestSave();
         core.ShowMessage($"Maximum health upgraded to {MaxHealth:F0}.");
     }
 
@@ -73,6 +84,8 @@ public class RanchHealthSystem : MonoBehaviour
         if (cost < 0f) { core.ShowMessage("Maximum armor already reached."); return; }
         if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for armor."); return; }
         ArmorLevel++;
+        core.Progression.AddExperience(25f + ArmorLevel * 8f, "Armor upgrade");
+        core.Save.RequestSave();
         core.ShowMessage($"Armor upgraded to {ArmorPercent:F0}% damage reduction.");
     }
 
@@ -82,6 +95,8 @@ public class RanchHealthSystem : MonoBehaviour
         if (cost < 0f) { core.ShowMessage("Maximum regeneration already reached."); return; }
         if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for regeneration."); return; }
         RegenerationLevel++;
+        core.Progression.AddExperience(25f + RegenerationLevel * 8f, "Regeneration upgrade");
+        core.Save.RequestSave();
         core.ShowMessage($"Regeneration upgraded to {RegenerationPerSecond:0.00} HP/sec.");
     }
 
@@ -91,12 +106,24 @@ public class RanchHealthSystem : MonoBehaviour
         if (cost <= 0f) { core.ShowMessage("You are already at full health."); return; }
         if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for a full heal."); return; }
         CurrentHealth = MaxHealth;
+        core.Save.RequestSave();
         core.ShowMessage("Health restored to full.");
+    }
+
+    public void RestoreState(float currentHealth, int healthLevel, int armorLevel, int regenerationLevel)
+    {
+        HealthLevel = Mathf.Clamp(healthLevel, 0, healthValues.Length - 1);
+        ArmorLevel = Mathf.Clamp(armorLevel, 0, armorValues.Length - 1);
+        RegenerationLevel = Mathf.Clamp(regenerationLevel, 0, regenValues.Length - 1);
+        CurrentHealth = Mathf.Clamp(currentHealth, 1f, MaxHealth);
+        IsDead = false;
+        DamageFlashTime = 0f;
     }
 
     private void Die()
     {
         IsDead = true;
+        core.Save.SaveGame(false);
         core.ShowMessage("You were defeated by the Ranch Raiders. Press R to restart.", 999f);
         if (core.Player != null) core.Player.enabled = false;
         Cursor.lockState = CursorLockMode.None;

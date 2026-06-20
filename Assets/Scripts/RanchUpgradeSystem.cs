@@ -50,6 +50,8 @@ public class RanchUpgradeSystem : MonoBehaviour
         core.Bottles.UnlockThrough(next);
         core.Bottles.SelectTier(next);
         core.AddCJHeat(next * 8);
+        core.Progression.AddExperience(20f + next * 8f, "Bottle upgrade");
+        core.Save.RequestSave();
     }
 
     public void BuyNextToolTier()
@@ -71,6 +73,14 @@ public class RanchUpgradeSystem : MonoBehaviour
         ToolTier = next;
         core.AddCJHeat(next * 5);
         core.ShowMessage($"Extractor upgraded to {CurrentToolName} ({ExtractionMultiplier:0.##}x extraction).");
+        core.Progression.AddExperience(25f + next * 10f, "Extractor upgrade");
+        core.Save.RequestSave();
+        core.NotifyResourcesChanged();
+    }
+
+    public void RestoreState(int toolTier)
+    {
+        ToolTier = Mathf.Clamp(toolTier, 0, MaxToolTier);
         core.NotifyResourcesChanged();
     }
 }

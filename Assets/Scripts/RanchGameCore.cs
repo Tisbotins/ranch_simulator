@@ -11,18 +11,21 @@ public class RanchGameCore : MonoBehaviour
     public RanchUpgradeSystem Upgrades { get; private set; }
     public RanchTreeSystem Tree { get; private set; }
     public RanchHealthSystem Health { get; private set; }
+    public RanchStaminaSystem Stamina { get; private set; }
+    public RanchCombatSystem Combat { get; private set; }
+    public RanchProgressionSystem Progression { get; private set; }
+    public RanchBossSystem Bosses { get; private set; }
     public RanchWaveSystem Waves { get; private set; }
     public RanchDrewSystem Drew { get; private set; }
     public RanchShopSystem Shop { get; private set; }
     public RanchCJSystem CJ { get; private set; }
+    public RanchSaveSystem Save { get; private set; }
 
     public RanchPlayerController Player { get; private set; }
     public Transform RanchTreeTransform { get; private set; }
-
     public int BottlesSold { get; private set; }
     public int CJHeat { get; private set; }
     public bool GameWon { get; private set; }
-
     public string StatusMessage { get; private set; } = "";
     public float StatusMessageTime { get; private set; }
 
@@ -40,39 +43,43 @@ public class RanchGameCore : MonoBehaviour
         Instance = this;
     }
 
-    public void Initialize(
-        RanchInventory inventory,
-        RanchBottleSystem bottles,
-        RanchUpgradeSystem upgrades,
-        RanchTreeSystem tree,
-        RanchHealthSystem health,
-        RanchWaveSystem waves,
-        RanchDrewSystem drew,
-        RanchShopSystem shop,
-        RanchCJSystem cj)
+    public void Initialize(RanchInventory inventory, RanchBottleSystem bottles,
+        RanchUpgradeSystem upgrades, RanchTreeSystem tree, RanchHealthSystem health,
+        RanchStaminaSystem stamina, RanchCombatSystem combat, RanchProgressionSystem progression,
+        RanchBossSystem bosses, RanchWaveSystem waves, RanchDrewSystem drew,
+        RanchShopSystem shop, RanchCJSystem cj, RanchSaveSystem save)
     {
         Inventory = inventory;
         Bottles = bottles;
         Upgrades = upgrades;
         Tree = tree;
         Health = health;
+        Stamina = stamina;
+        Combat = combat;
+        Progression = progression;
+        Bosses = bosses;
         Waves = waves;
         Drew = drew;
         Shop = shop;
         CJ = cj;
+        Save = save;
     }
 
     public void RegisterWorld(RanchPlayerController player, Transform ranchTree)
     {
         Player = player;
         RanchTreeTransform = ranchTree;
+        Combat.RegisterPlayer(player);
+        Progression.RegisterPlayer(player);
     }
 
     public void RegisterBottleSale(int bottleCount, int ranchUnitsSold)
     {
         BottlesSold += Mathf.Max(0, bottleCount);
         CJHeat += Mathf.Max(0, ranchUnitsSold);
+        Progression.AddExperience(Mathf.Max(2f, ranchUnitsSold * 0.18f), "Bottle sale");
         CJ.CheckProgress();
+        Save.RequestSave();
         NotifyResourcesChanged();
     }
 
@@ -80,7 +87,17 @@ public class RanchGameCore : MonoBehaviour
     {
         CJHeat += Mathf.Max(0, amount);
         CJ.CheckProgress();
+        Save.RequestSave();
         NotifyResourcesChanged();
+    }
+
+    public void RestoreProgress(int bottlesSold, int cjHeat, bool gameWon)
+    {
+        BottlesSold = Mathf.Max(0, bottlesSold);
+        CJHeat = Mathf.Max(0, cjHeat);
+        GameWon = gameWon;
+        CJ.CheckProgress();
+        if (GameWon && Player != null) Player.enabled = false;
     }
 
     public void NotifyResourcesChanged()
@@ -100,11 +117,13 @@ public class RanchGameCore : MonoBehaviour
     {
         if (GameWon) return;
         GameWon = true;
+        Progression.AddExperience(1000f, "Defeated CJ");
         ShowMessage("You defeated CJ, the Ultimate Ranchenator.", 999f);
         GameWonEvent?.Invoke();
         if (Player != null) Player.enabled = false;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+        Save.SaveGame(false);
     }
 
     public void RestartScene()
@@ -116,9 +135,7 @@ public class RanchGameCore : MonoBehaviour
 
     private void Update()
     {
-        if (StatusMessageTime > 0f)
-            StatusMessageTime -= Time.unscaledDeltaTime;
-
+        if (StatusMessageTime > 0f) StatusMessageTime -= Time.unscaledDeltaTime;
         if ((GameWon || (Health != null && Health.IsDead)) && Input.GetKeyDown(KeyCode.R))
             RestartScene();
     }

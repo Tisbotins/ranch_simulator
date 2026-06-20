@@ -21,28 +21,43 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchUpgradeSystem upgrades = GetOrAdd<RanchUpgradeSystem>();
         RanchTreeSystem tree = GetOrAdd<RanchTreeSystem>();
         RanchHealthSystem health = GetOrAdd<RanchHealthSystem>();
+        RanchStaminaSystem stamina = GetOrAdd<RanchStaminaSystem>();
+        RanchCombatSystem combat = GetOrAdd<RanchCombatSystem>();
+        RanchProgressionSystem progression = GetOrAdd<RanchProgressionSystem>();
+        RanchBossSystem bosses = GetOrAdd<RanchBossSystem>();
         RanchWaveSystem waves = GetOrAdd<RanchWaveSystem>();
         RanchDrewSystem drew = GetOrAdd<RanchDrewSystem>();
         RanchShopSystem shop = GetOrAdd<RanchShopSystem>();
         RanchCJSystem cj = GetOrAdd<RanchCJSystem>();
+        RanchSaveSystem save = GetOrAdd<RanchSaveSystem>();
         RanchWorldBuilder world = GetOrAdd<RanchWorldBuilder>();
         RanchUI ui = GetOrAdd<RanchUI>();
 
-        core.Initialize(inventory, bottles, upgrades, tree, health, waves, drew, shop, cj);
+        core.Initialize(inventory, bottles, upgrades, tree, health, stamina, combat,
+            progression, bosses, waves, drew, shop, cj, save);
+
         inventory.Initialize(core);
         bottles.Initialize(core);
         upgrades.Initialize(core);
         tree.Initialize(core);
         health.Initialize(core);
+        stamina.Initialize(core);
+        combat.Initialize(core);
+        progression.Initialize(core);
+        bosses.Initialize(core);
         waves.Initialize(core);
         drew.Initialize(core);
         shop.Initialize(core);
         cj.Initialize(core);
+        save.Initialize(core);
         ui.Initialize(core);
         world.Initialize(core);
         world.BuildWorld();
 
-        core.ShowMessage("Welcome to Ranch Simulator. Extract Ranch, build laboratories, survive waves, and overthrow CJ.");
+        bool loaded = save.LoadOnStartup();
+        core.ShowMessage(loaded
+            ? "Save loaded. Press K for progression, Z to save, and X to load."
+            : "Welcome to Ranch Simulator. Extract Ranch, survive waves, level up, and overthrow CJ.", 8f);
     }
 
     private T GetOrAdd<T>() where T : Component

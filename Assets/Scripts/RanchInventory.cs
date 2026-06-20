@@ -60,6 +60,24 @@ public class RanchInventory : MonoBehaviour
 
     public int GetBottleCount(int tier) => ValidTier(tier) ? bottleCounts[tier] : 0;
 
+    public int[] GetBottleCountsCopy()
+    {
+        int[] copy = new int[bottleCounts.Length];
+        System.Array.Copy(bottleCounts, copy, bottleCounts.Length);
+        return copy;
+    }
+
+    public void RestoreState(float rawRanch, float money, int[] savedBottleCounts)
+    {
+        RawRanch = Mathf.Max(0f, rawRanch);
+        Money = Mathf.Max(0f, money);
+        for (int i = 0; i < bottleCounts.Length; i++)
+            bottleCounts[i] = savedBottleCounts != null && i < savedBottleCounts.Length
+                ? Mathf.Max(0, savedBottleCounts[i])
+                : 0;
+        Changed();
+    }
+
     public int GetTotalBottleCount()
     {
         int total = 0;
@@ -73,5 +91,6 @@ public class RanchInventory : MonoBehaviour
     {
         InventoryChanged?.Invoke();
         core?.NotifyResourcesChanged();
+        core?.Save?.RequestSave();
     }
 }

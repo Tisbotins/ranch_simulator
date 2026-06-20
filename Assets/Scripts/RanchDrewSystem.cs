@@ -46,6 +46,16 @@ public class RanchDrewSystem : MonoBehaviour
             interval = Mathf.Max(1.2f, interval - 0.45f);
             core.ShowMessage($"Drew upgraded to Level {Level}.");
         }
+        core.Progression.AddExperience(20f + Level * 6f, "Drew upgrade");
+        core.Save.RequestSave();
+        core.NotifyResourcesChanged();
+    }
+
+    public void RestoreState(int level)
+    {
+        Level = Mathf.Clamp(level, 0, 10);
+        interval = Mathf.Max(1.2f, 6f - Mathf.Max(0, Level - 1) * 0.45f);
+        if (visual != null) visual.SetActive(IsHired);
         core.NotifyResourcesChanged();
     }
 

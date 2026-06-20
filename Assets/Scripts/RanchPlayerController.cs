@@ -16,6 +16,15 @@ public class RanchPlayerController : MonoBehaviour
     private float cameraPitch = 15f;
     private float yVelocity;
     private float swordAnimation;
+    private bool heavyAnimation;
+    private int animationCombo;
+    private float slowMultiplier = 1f;
+    private float slowTimer;
+    private Vector3 knockbackVelocity;
+    private Vector3 dodgeDirection;
+    private float dodgeTime;
+    private float dodgeDuration;
+    private float dodgeDistance;
 
     public void Initialize(RanchGameCore gameCore, CharacterController characterController,
         Camera camera, Transform swordVisual, Transform extractorVisual)
@@ -31,13 +40,15 @@ public class RanchPlayerController : MonoBehaviour
 
     private void Update()
     {
-        if (core == null || controller == null || playerCamera == null || core.GameWon || core.Health.IsDead || core.Shop.IsOpen) return;
+        if (core == null || controller == null || playerCamera == null || core.GameWon ||
+            core.Health.IsDead || core.Shop.IsOpen || core.Progression.IsOpen) return;
+
         HandleCursor();
         HandleMovement();
         UpdateCamera();
         HandleBottleSelection();
         HandleInteraction();
-        HandleSword();
+        UpdateSwordAnimation();
         UpdateTools();
     }
 
@@ -46,13 +57,84 @@ public class RanchPlayerController : MonoBehaviour
         transform.Rotate(Vector3.up * Input.GetAxis("Mouse X") * MouseSensitivity);
         cameraPitch = Mathf.Clamp(cameraPitch - Input.GetAxis("Mouse Y") * MouseSensitivity, -5f, 55f);
 
-        Vector3 move = transform.right * Input.GetAxis("Horizontal") + transform.forward * Input.GetAxis("Vertical");
+        if (slowTimer > 0f)
+        {
+            slowTimer -= Time.deltaTime;
+            if (slowTimer <= 0f) slowMultiplier = 1f;
+        }
+
+        if (dodgeTime > 0f)
+        {
+            dodgeTime -= Time.deltaTime;
+            float speed = dodgeDuration <= 0f ? 0f : dodgeDistance / dodgeDuration;
+            controller.Move(dodgeDirection * speed * Time.deltaTime);
+            return;
+        }
+
+        Vector3 move = GetDesiredMoveDirection();
         if (move.magnitude > 1f) move.Normalize();
         if (controller.isGrounded && yVelocity < 0f) yVelocity = -2f;
         yVelocity += -18f * Time.deltaTime;
-        Vector3 velocity = move * MoveSpeed;
+
+        float movementMultiplier = core.Combat.MovementMultiplier * slowMultiplier;
+        Vector3 velocity = move * MoveSpeed * movementMultiplier + knockbackVelocity;
         velocity.y = yVelocity;
         controller.Move(velocity * Time.deltaTime);
+        knockbackVelocity = Vector3.Lerp(knockbackVelocity, Vector3.zero, 7f * Time.deltaTime);
+    }
+
+    public Vector3 GetDesiredMoveDirection()
+    {
+        Vector3 move = transform.right * Input.GetAxisRaw("Horizontal") +
+                       transform.forward * Input.GetAxisRaw("Vertical");
+        return move.magnitude > 1f ? move.normalized : move;
+    }
+
+    public void BeginDodge(Vector3 direction, float distance, float duration)
+    {
+        dodgeDirection = direction.normalized;
+        dodgeDistance = Mathf.Max(0f, distance);
+        dodgeDuration = Mathf.Max(0.05f, duration);
+        dodgeTime = dodgeDuration;
+    }
+
+    public void ApplySlow(float multiplier, float duration)
+    {
+        slowMultiplier = Mathf.Clamp(multiplier, 0.25f, 1f);
+        slowTimer = Mathf.Max(slowTimer, duration);
+    }
+
+    public void ApplyKnockback(Vector3 direction, float strength)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude > 0.01f)
+            knockbackVelocity += direction.normalized * Mathf.Max(0f, strength);
+    }
+
+    public void PlayAttackAnimation(bool heavy, int combo)
+    {
+        heavyAnimation = heavy;
+        animationCombo = combo;
+        swordAnimation = heavy ? 0.75f : 0.30f;
+    }
+
+    private void UpdateSwordAnimation()
+    {
+        if (sword == null) return;
+
+        if (swordAnimation > 0f)
+        {
+            float total = heavyAnimation ? 0.75f : 0.30f;
+            swordAnimation -= Time.deltaTime;
+            float progress = 1f - Mathf.Clamp01(swordAnimation / total);
+            float swing = Mathf.Sin(progress * Mathf.PI);
+            float angle = heavyAnimation ? 145f : 75f + animationCombo * 10f;
+            sword.localRotation = Quaternion.Euler(20f + swing * angle, 0f, -25f);
+        }
+        else
+        {
+            sword.localRotation = Quaternion.Euler(20f, 0f, -25f);
+        }
     }
 
     private void UpdateCamera()
@@ -102,36 +184,28 @@ public class RanchPlayerController : MonoBehaviour
         return nearest;
     }
 
-    private void HandleSword()
-    {
-        if (swordAnimation > 0f)
-        {
-            swordAnimation -= Time.deltaTime;
-            if (sword != null)
-            {
-                float swing = Mathf.Sin((1f - swordAnimation / 0.25f) * Mathf.PI);
-                sword.localRotation = Quaternion.Euler(20f + swing * 80f, 0f, -25f);
-            }
-        }
-        else if (sword != null) sword.localRotation = Quaternion.Euler(20f, 0f, -25f);
-
-        if (Input.GetKeyDown(KeyCode.Space) && !IsExtracting)
-        {
-            swordAnimation = 0.25f;
-            core.Waves.AttackNearestEnemy(core.Shop.CurrentSwordDamage, 3.5f, true);
-        }
-    }
-
     private void UpdateTools()
     {
         if (sword != null) sword.gameObject.SetActive(!IsExtracting);
         if (extractor != null) extractor.gameObject.SetActive(IsExtracting);
     }
 
+    public void Teleport(Vector3 position, float rotationY)
+    {
+        if (controller != null) controller.enabled = false;
+        transform.position = position;
+        transform.rotation = Quaternion.Euler(0f, rotationY, 0f);
+        if (controller != null) controller.enabled = true;
+    }
+
     private void HandleCursor()
     {
-        if (Input.GetKeyDown(KeyCode.Escape)) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
-        if (Input.GetMouseButtonDown(0)) LockCursor();
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        if (Input.GetMouseButtonDown(0) && Cursor.visible) LockCursor();
     }
 
     private static void LockCursor()

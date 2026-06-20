@@ -32,7 +32,7 @@ public class RanchTreeSystem : MonoBehaviour
 
         float stageBonus = 1f + Stage * 0.18f;
         float amount = BaseRanchPerSecond * core.Upgrades.ExtractionMultiplier *
-                       core.Shop.ExtractionResearchMultiplier * stageBonus * deltaTime;
+                       core.Shop.ExtractionResearchMultiplier * core.Progression.ProductionMultiplier * stageBonus * deltaTime;
 
         core.Inventory.AddRawRanch(amount);
         LifetimeRanchExtracted += amount;
@@ -54,6 +54,14 @@ public class RanchTreeSystem : MonoBehaviour
         for (int i = 0; i < thresholds.Length; i++)
             if (LifetimeRanchExtracted >= thresholds[i]) result = i;
         return result;
+    }
+
+    public void RestoreState(float lifetimeRanchExtracted)
+    {
+        LifetimeRanchExtracted = Mathf.Max(0f, lifetimeRanchExtracted);
+        Stage = CalculateStage();
+        ApplyVisual();
+        core.NotifyResourcesChanged();
     }
 
     private void ApplyVisual()

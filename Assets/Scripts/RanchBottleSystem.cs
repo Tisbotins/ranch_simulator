@@ -34,6 +34,7 @@ public class RanchBottleSystem : MonoBehaviour
         UnlockedTier = Mathf.Max(UnlockedTier, tier);
         SelectedTier = Mathf.Min(SelectedTier, UnlockedTier);
         core.NotifyResourcesChanged();
+        core.Save.RequestSave();
     }
 
     public void SelectTier(int tier)
@@ -107,34 +108,39 @@ public class RanchBottleSystem : MonoBehaviour
         float tierBonus = 1f + tier * 0.22f;
         float drewBonus = 1f + core.Drew.Level * 0.03f;
         float marketBonus = core.Shop.SaleMultiplier;
-        float earned = amount * capacity * 5f * tierBonus * drewBonus * marketBonus;
+        float progressionBonus = core.Progression.SaleMultiplier;
+        float earned = amount * capacity * 5f * tierBonus * drewBonus * marketBonus * progressionBonus;
 
         core.Inventory.AddMoney(earned);
         core.RegisterBottleSale(amount, amount * capacity);
         core.ShowMessage($"Sold {amount} {GetTierName(tier)}{(amount == 1 ? "" : "s")} for ${earned:F0}.");
     }
 
+
+    public void RestoreState(int unlockedTier, int selectedTier)
+    {
+        UnlockedTier = Mathf.Clamp(unlockedTier, 0, TierCount - 1);
+        SelectedTier = Mathf.Clamp(selectedTier, 0, UnlockedTier);
+        core.NotifyResourcesChanged();
+    }
+
     private bool ValidTier(int tier) => tier >= 0 && tier < TierCount;
 
     public void BottleAllSelected()
     {
-    int capacity = GetCapacity(SelectedTier);
-    int made = 0;
+        int capacity = GetCapacity(SelectedTier);
+        if (capacity <= 0) return;
 
-    while (core.Inventory.RawRanch >= capacity)
-    {
-        core.Inventory.TrySpendRawRanch(capacity);
-        core.Inventory.AddBottle(SelectedTier);
-        made++;
-    }
+        int made = Mathf.FloorToInt(core.Inventory.RawRanch / capacity);
+        if (made <= 0)
+        {
+            core.ShowMessage("Not enough Ranch to bottle.");
+            return;
+        }
 
-    if (made > 0)
-    {
+        float totalCost = made * capacity;
+        if (!core.Inventory.TrySpendRawRanch(totalCost)) return;
+        core.Inventory.AddBottle(SelectedTier, made);
         core.ShowMessage("Instant bottled " + made + " " + GetTierName(SelectedTier) + "(s).");
-    }
-    else
-    {
-        core.ShowMessage("Not enough Ranch to bottle.");
-    }
     }
 }

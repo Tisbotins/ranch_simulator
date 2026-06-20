@@ -38,8 +38,10 @@ public class RanchShopSystem : MonoBehaviour
     public float CurrentSwordDamage => swordDamage[SwordLevel];
     public float ExtractionResearchMultiplier => 1f + ResearchLevel * 0.12f;
     public float SaleMultiplier => 1f + MarketLevel * 0.10f;
-    public float CurrentPassiveRanchRate => passiveRanch[StructureLevel] * (1f + ResearchLevel * 0.20f);
-    public float CurrentPassiveMoneyRate => passiveMoney[StructureLevel] * (1f + MarketLevel * 0.25f);
+    public float CurrentPassiveRanchRate => passiveRanch[StructureLevel] * (1f + ResearchLevel * 0.20f) *
+        (core != null && core.Progression != null ? core.Progression.ProductionMultiplier : 1f);
+    public float CurrentPassiveMoneyRate => passiveMoney[StructureLevel] * (1f + MarketLevel * 0.25f) *
+        (core != null && core.Progression != null ? core.Progression.SaleMultiplier : 1f);
 
     private RanchGameCore core;
     private RanchPlayerController player;
@@ -89,6 +91,7 @@ public class RanchShopSystem : MonoBehaviour
     public void OpenShop()
     {
         if (IsOpen || core.Health.IsDead || core.GameWon) return;
+        if (core.Progression.IsOpen) core.Progression.CloseMenu();
         IsOpen = true;
         previousTimeScale = Time.timeScale;
         Time.timeScale = 0f;
@@ -123,6 +126,8 @@ public class RanchShopSystem : MonoBehaviour
         StructureLevel++;
         RefreshEmpireVisual();
         core.AddCJHeat(40 * StructureLevel);
+        core.Progression.AddExperience(70f + StructureLevel * 30f, "Empire construction");
+        core.Save.RequestSave();
         core.ShowMessage($"Built {CurrentStructureName}. Passive production increased.");
     }
 
@@ -133,6 +138,8 @@ public class RanchShopSystem : MonoBehaviour
         if (StructureLevel < Mathf.Max(0, SwordLevel)) { core.ShowMessage("Build a stronger Ranch Empire structure first."); return; }
         if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for the next sword."); return; }
         SwordLevel++;
+        core.Progression.AddExperience(35f + SwordLevel * 15f, "Sword upgrade");
+        core.Save.RequestSave();
         core.ShowMessage($"Sword upgraded to {CurrentSwordName} with {CurrentSwordDamage:F0} damage.");
     }
 
@@ -143,6 +150,8 @@ public class RanchShopSystem : MonoBehaviour
         if (StructureLevel < 3) { core.ShowMessage("Build the Ranch Laboratory first."); return; }
         if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for the auto-bottler."); return; }
         AutomationLevel++;
+        core.Progression.AddExperience(30f + AutomationLevel * 12f, "Automation upgrade");
+        core.Save.RequestSave();
         core.ShowMessage($"Auto-bottler upgraded to Level {AutomationLevel}.");
     }
 
@@ -153,6 +162,8 @@ public class RanchShopSystem : MonoBehaviour
         if (StructureLevel < 3) { core.ShowMessage("Build the Ranch Laboratory first."); return; }
         if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for production research."); return; }
         ResearchLevel++;
+        core.Progression.AddExperience(35f + ResearchLevel * 14f, "Production research");
+        core.Save.RequestSave();
         core.ShowMessage($"Ranch production research upgraded to Level {ResearchLevel}.");
     }
 
@@ -163,6 +174,8 @@ public class RanchShopSystem : MonoBehaviour
         if (StructureLevel < 4) { core.ShowMessage("Build the Advanced Ranch Laboratory first."); return; }
         if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for market research."); return; }
         MarketLevel++;
+        core.Progression.AddExperience(35f + MarketLevel * 14f, "Market research");
+        core.Save.RequestSave();
         core.ShowMessage($"Market research upgraded to Level {MarketLevel}.");
     }
 
@@ -204,6 +217,18 @@ public class RanchShopSystem : MonoBehaviour
             defenseTimer = 0f;
             core.Waves.DamageNearestFromDefense(damage, 35f);
         }
+    }
+
+    public void RestoreState(int structureLevel, int swordLevel, int automationLevel,
+        int researchLevel, int marketLevel)
+    {
+        StructureLevel = Mathf.Clamp(structureLevel, 0, structureNames.Length - 1);
+        SwordLevel = Mathf.Clamp(swordLevel, 0, swordNames.Length - 1);
+        AutomationLevel = Mathf.Clamp(automationLevel, 0, automationIntervals.Length - 1);
+        ResearchLevel = Mathf.Clamp(researchLevel, 0, researchCosts.Length);
+        MarketLevel = Mathf.Clamp(marketLevel, 0, marketCosts.Length);
+        RefreshEmpireVisual();
+        core.NotifyResourcesChanged();
     }
 
     private void RefreshEmpireVisual()
