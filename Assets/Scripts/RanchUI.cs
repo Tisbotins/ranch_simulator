@@ -5,11 +5,27 @@ public class RanchUI : MonoBehaviour
 {
     private const float VirtualWidth = 1600f;
     private const float VirtualHeight = 900f;
+
     private RanchGameCore core;
-    private Texture2D panelTexture, healthFillTexture, healthLostTexture, staminaFillTexture,
-        waitingTexture, activeTexture, damageTexture, bossFillTexture;
-    private GUIStyle panelStyle, waitingStyle, activeStyle, titleStyle, bodyStyle,
-        centeredStyle, healthStyle, largeStyle;
+    private Texture2D panelTexture;
+    private Texture2D selectedTexture;
+    private Texture2D healthFillTexture;
+    private Texture2D healthLostTexture;
+    private Texture2D staminaFillTexture;
+    private Texture2D waitingTexture;
+    private Texture2D activeTexture;
+    private Texture2D damageTexture;
+    private Texture2D bossFillTexture;
+    private GUIStyle panelStyle;
+    private GUIStyle selectedPanelStyle;
+    private GUIStyle waitingStyle;
+    private GUIStyle activeStyle;
+    private GUIStyle titleStyle;
+    private GUIStyle bodyStyle;
+    private GUIStyle smallStyle;
+    private GUIStyle centeredStyle;
+    private GUIStyle healthStyle;
+    private GUIStyle largeStyle;
     private bool stylesReady;
 
     public void Initialize(RanchGameCore gameCore)
@@ -19,8 +35,11 @@ public class RanchUI : MonoBehaviour
 
     private void OnGUI()
     {
-        if (core == null || core.Inventory == null || core.Shop.IsOpen || core.Progression.IsOpen)
+        if (core == null || core.Inventory == null || core.Shop.IsOpen ||
+            core.Progression.IsOpen || core.Settings.IsOpen)
+        {
             return;
+        }
 
         EnsureStyles();
 
@@ -36,13 +55,23 @@ public class RanchUI : MonoBehaviour
             new Vector3(scale, scale, 1f)
         );
 
-        DrawMainPanel();
-        DrawHealthAndStamina();
-        DrawWavePanel();
-        DrawCJGatePanel();
-        DrawControlsPanel();
-        DrawMessage();
-        DrawPrompt();
+        bool forceCriticalHud = core.Health.IsDead || core.GameWon || core.CJ.FinalBattleActive;
+
+        if (core.Settings.HudVisible || forceCriticalHud)
+        {
+            DrawMainPanel();
+            DrawHealthAndStamina();
+            DrawWavePanel();
+            DrawCJGatePanel();
+            DrawEquipmentSlots();
+            DrawMessage();
+            DrawPrompt();
+        }
+        else
+        {
+            GUI.Box(new Rect(20f, 20f, 240f, 48f), GUIContent.none, panelStyle);
+            GUI.Label(new Rect(28f, 24f, 224f, 38f), "HUD OFF — PRESS H", centeredStyle);
+        }
 
         if (core.Health.DamageFlashTime > 0f)
             GUI.DrawTexture(new Rect(0f, 0f, VirtualWidth, VirtualHeight), damageTexture);
@@ -60,23 +89,20 @@ public class RanchUI : MonoBehaviour
     {
         int tier = core.Bottles.SelectedTier;
         StringBuilder text = new StringBuilder();
-        text.AppendLine($"Raw Ranch: {core.Inventory.RawRanch:F1}");
-        text.AppendLine($"Money: ${core.Inventory.Money:F0}");
-        text.AppendLine($"Bottles sold: {core.BottlesSold}");
+        text.AppendLine("Raw Ranch: " + core.Inventory.RawRanch.ToString("F1"));
+        text.AppendLine("Money: $" + core.Inventory.Money.ToString("F0"));
+        text.AppendLine("Bottle: " + core.Bottles.GetTierName(tier));
+        text.AppendLine("Stored: " + core.Inventory.GetBottleCount(tier));
         text.AppendLine();
-        text.AppendLine($"Bottle: {core.Bottles.GetTierName(tier)} ({core.Bottles.GetCapacity(tier)} Ranch)");
-        text.AppendLine($"Stored: {core.Inventory.GetBottleCount(tier)}");
-        text.AppendLine();
-        text.AppendLine($"Level {core.Progression.Level} — {core.Progression.CurrentPhaseName}");
-        text.AppendLine($"XP: {core.Progression.Experience:F0}/{core.Progression.ExperienceToNextLevel:F0} | Points: {core.Progression.SkillPoints}");
-        text.AppendLine($"Tree: {core.Tree.CurrentStageName}");
-        text.AppendLine($"Tool: {core.Upgrades.CurrentToolName}");
-        text.AppendLine($"Sword: {core.Shop.CurrentSwordName}");
-        text.AppendLine($"Empire: {core.Shop.CurrentStructureName}");
-        text.AppendLine($"CJ Heat: {core.CJHeat} — {core.CJ.GetHeatStatus()}");
-        text.AppendLine($"CJ Gate: {core.CJ.GetGateStatusShort()}");
-        text.AppendLine($"Save: {core.Save.LastSaveStatus}");
-        DrawPanel(new Rect(20f, 20f, 430f, 535f), "RANCH SIMULATOR", text.ToString());
+        text.AppendLine("Level " + core.Progression.Level + " — " + core.Progression.CurrentPhaseName);
+        text.AppendLine("XP: " + core.Progression.Experience.ToString("F0") + "/" + core.Progression.ExperienceToNextLevel.ToString("F0"));
+        text.AppendLine("Tree: " + core.Tree.CurrentStageName);
+        text.AppendLine("Empire: " + core.Shop.CurrentStructureName);
+        text.AppendLine("Weapon: " + core.Equipment.CurrentWeaponName);
+        text.AppendLine("CJ Heat: " + core.CJHeat + " — " + core.CJ.GetHeatStatus());
+        text.AppendLine("Save: " + core.Save.LastSaveStatus);
+
+        DrawPanel(new Rect(20f, 20f, 390f, 390f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
     }
 
     private void DrawHealthAndStamina()
@@ -96,7 +122,8 @@ public class RanchUI : MonoBehaviour
         );
         GUI.Label(
             healthBar,
-            $"HP {core.Health.CurrentHealth:F0}/{core.Health.MaxHealth:F0} | Armor {core.Health.ArmorPercent:F0}%",
+            "HP " + core.Health.CurrentHealth.ToString("F0") + "/" + core.Health.MaxHealth.ToString("F0") +
+            " | Armor " + core.Health.ArmorPercent.ToString("F0") + "%",
             healthStyle
         );
 
@@ -111,7 +138,7 @@ public class RanchUI : MonoBehaviour
         );
         GUI.Label(
             staminaBar,
-            $"STAMINA {core.Stamina.CurrentStamina:F0}/{core.Stamina.MaximumStamina:F0}",
+            "STAMINA " + core.Stamina.CurrentStamina.ToString("F0") + "/" + core.Stamina.MaximumStamina.ToString("F0"),
             healthStyle
         );
     }
@@ -119,9 +146,10 @@ public class RanchUI : MonoBehaviour
     private void DrawWavePanel()
     {
         DrawPanel(
-            new Rect(1150f, 20f, 430f, 270f),
+            new Rect(1170f, 20f, 410f, 260f),
             "RANCH RAIDER WAVES",
-            core.Waves.GetStatusText()
+            core.Waves.GetStatusText(),
+            smallStyle
         );
 
         if (core.CJ.FinalBattleActive)
@@ -164,35 +192,39 @@ public class RanchUI : MonoBehaviour
 
         string healthText = core.CJ.FinalBoss == null
             ? "ENTERING THE ARENA..."
-            : $"PHASE {Mathf.Max(1, core.CJ.CurrentPhase)}/3 — {core.CJ.FinalBoss.Health:F0}/{core.CJ.FinalBoss.MaxHealth:F0} HP";
+            : "PHASE " + Mathf.Max(1, core.CJ.CurrentPhase) + "/3 — " +
+              core.CJ.FinalBoss.Health.ToString("F0") + "/" + core.CJ.FinalBoss.MaxHealth.ToString("F0") + " HP";
         GUI.Label(bar, healthText, healthStyle);
     }
 
     private void DrawCJGatePanel()
     {
         DrawPanel(
-            new Rect(1150f, 315f, 430f, 165f),
+            new Rect(1170f, 300f, 410f, 180f),
             "CJ FINAL BATTLE",
-            core.CJ.GetGateStatusText()
+            core.CJ.GetGateStatusText(),
+            smallStyle
         );
     }
 
-    private void DrawControlsPanel()
+    private void DrawEquipmentSlots()
     {
-        string controls =
-            "WASD — Move\n" +
-            "Left Click / Space — Light attack\n" +
-            "Q — Heavy attack\n" +
-            "Right Click — Block / perfect block\n" +
-            "Left Control — Dodge\n" +
-            "E — Interact / extract\n" +
-            "Shift + E — Instant bottle / sell all\n" +
-            "[ and ] — Change bottle\n" +
-            "P — Shop | K — Progression\n" +
-            "Z — Save | X — Load\n" +
-            "R — Restart after defeat or victory";
+        float slotWidth = 250f;
+        float gap = 18f;
+        float totalWidth = slotWidth * 3f + gap * 2f;
+        float startX = (VirtualWidth - totalWidth) * 0.5f;
+        float y = 745f;
 
-        DrawPanel(new Rect(1150f, 500f, 430f, 340f), "CONTROLS", controls);
+        for (int i = 0; i < RanchEquipmentSystem.SlotCount; i++)
+        {
+            Rect slot = new Rect(startX + i * (slotWidth + gap), y, slotWidth, 72f);
+            GUI.Box(slot, GUIContent.none, core.Equipment.ActiveSlot == i ? selectedPanelStyle : panelStyle);
+            GUI.Label(
+                new Rect(slot.x + 8f, slot.y + 5f, slot.width - 16f, slot.height - 10f),
+                (i + 1) + "\n" + core.Equipment.GetSlotName(i),
+                centeredStyle
+            );
+        }
     }
 
     private void DrawMessage()
@@ -200,12 +232,12 @@ public class RanchUI : MonoBehaviour
         if (string.IsNullOrWhiteSpace(core.StatusMessage) || core.StatusMessageTime <= 0f)
             return;
 
-        Rect rect = new Rect(20f, 745f, 740f, 120f);
+        Rect rect = new Rect(20f, 630f, 560f, 100f);
         GUI.Box(rect, GUIContent.none, panelStyle);
         GUI.Label(
-            new Rect(rect.x + 20f, rect.y + 16f, rect.width - 40f, rect.height - 32f),
+            new Rect(rect.x + 16f, rect.y + 12f, rect.width - 32f, rect.height - 24f),
             core.StatusMessage,
-            bodyStyle
+            smallStyle
         );
     }
 
@@ -213,12 +245,14 @@ public class RanchUI : MonoBehaviour
     {
         if (core.Player == null || string.IsNullOrWhiteSpace(core.Player.CurrentPrompt) ||
             core.Health.IsDead || core.GameWon)
+        {
             return;
+        }
 
-        Rect rect = new Rect(380f, 825f, 840f, 58f);
+        Rect rect = new Rect(380f, 835f, 840f, 48f);
         GUI.Box(rect, GUIContent.none, panelStyle);
         GUI.Label(
-            new Rect(rect.x + 16f, rect.y + 8f, rect.width - 32f, rect.height - 16f),
+            new Rect(rect.x + 12f, rect.y + 4f, rect.width - 24f, rect.height - 8f),
             core.Player.CurrentPrompt,
             centeredStyle
         );
@@ -228,47 +262,31 @@ public class RanchUI : MonoBehaviour
     {
         Rect rect = new Rect(390f, 260f, 820f, 360f);
         GUI.Box(rect, GUIContent.none, panelStyle);
-        GUI.Label(
-            new Rect(rect.x + 30f, rect.y + 45f, rect.width - 60f, 70f),
-            "YOU WERE RANCHED",
-            largeStyle
-        );
+        GUI.Label(new Rect(rect.x + 30f, rect.y + 45f, rect.width - 60f, 70f), "YOU WERE RANCHED", largeStyle);
         GUI.Label(
             new Rect(rect.x + 90f, rect.y + 145f, rect.width - 180f, 150f),
-            "The Ranch Raiders overwhelmed you.\n\nUse blocking, perfect blocks, dodges, skill points, health upgrades, and stronger swords.\n\nPress R to restart from your latest save.",
+            "The Ranch Raiders overwhelmed you.\n\nUse weapons, blocking, dodges, health upgrades, and area progression.\n\nPress R to restart from your latest save.",
             centeredStyle
         );
     }
 
     private void DrawWinScreen()
     {
-        Rect rect = new Rect(390f, 250f, 820f, 410f);
+        Rect rect = new Rect(390f, 250f, 820f, 390f);
         GUI.Box(rect, GUIContent.none, panelStyle);
+        GUI.Label(new Rect(rect.x + 30f, rect.y + 35f, rect.width - 60f, 75f), "CJ HAS BEEN OVERTHROWN", largeStyle);
         GUI.Label(
-            new Rect(rect.x + 30f, rect.y + 35f, rect.width - 60f, 75f),
-            "CJ HAS BEEN OVERTHROWN",
-            largeStyle
-        );
-        GUI.Label(
-            new Rect(rect.x + 80f, rect.y + 135f, rect.width - 160f, 220f),
-            "CJ: You have become... the Ranch Simulator.\n\nDrew: There is another.\n\nPress R to delete the completed save and begin a new game.",
+            new Rect(rect.x + 80f, rect.y + 140f, rect.width - 160f, 180f),
+            "CJ: You have become... the Ranch Simulator.\n\nDrew: There is another.\n\nPress R to erase the completed save and start a new game.",
             centeredStyle
         );
     }
 
-    private void DrawPanel(Rect rect, string heading, string body)
+    private void DrawPanel(Rect rect, string heading, string body, GUIStyle textStyle)
     {
         GUI.Box(rect, GUIContent.none, panelStyle);
-        GUI.Label(
-            new Rect(rect.x + 16f, rect.y + 12f, rect.width - 32f, 42f),
-            heading,
-            titleStyle
-        );
-        GUI.Label(
-            new Rect(rect.x + 22f, rect.y + 62f, rect.width - 44f, rect.height - 76f),
-            body,
-            bodyStyle
-        );
+        GUI.Label(new Rect(rect.x + 12f, rect.y + 9f, rect.width - 24f, 38f), heading, titleStyle);
+        GUI.Label(new Rect(rect.x + 18f, rect.y + 53f, rect.width - 36f, rect.height - 65f), body, textStyle);
     }
 
     private void EnsureStyles()
@@ -276,25 +294,31 @@ public class RanchUI : MonoBehaviour
         if (stylesReady)
             return;
 
-        panelTexture = MakeTexture(new Color(0.025f, 0.025f, 0.025f, 0.93f));
+        panelTexture = MakeTexture(new Color(0.025f, 0.025f, 0.025f, 0.94f));
+        selectedTexture = MakeTexture(new Color(0.08f, 0.55f, 0.50f, 0.98f));
         healthLostTexture = MakeTexture(new Color(0.22f, 0.05f, 0.05f, 1f));
         healthFillTexture = MakeTexture(new Color(0.18f, 0.80f, 0.26f, 1f));
-        staminaFillTexture = MakeTexture(new Color(0.16f, 0.48f, 0.95f, 1f));
+        staminaFillTexture = MakeTexture(new Color(0.15f, 0.55f, 0.95f, 1f));
         waitingTexture = MakeTexture(new Color(0.36f, 0.20f, 0.03f, 0.96f));
         activeTexture = MakeTexture(new Color(0.40f, 0.04f, 0.04f, 0.96f));
         damageTexture = MakeTexture(new Color(0.75f, 0.02f, 0.02f, 0.18f));
-        bossFillTexture = MakeTexture(new Color(0.95f, 0.63f, 0.08f, 1f));
+        bossFillTexture = MakeTexture(new Color(0.95f, 0.65f, 0.05f, 1f));
 
         panelStyle = new GUIStyle(GUI.skin.box);
         panelStyle.normal.background = panelTexture;
+
+        selectedPanelStyle = new GUIStyle(panelStyle);
+        selectedPanelStyle.normal.background = selectedTexture;
+
         waitingStyle = new GUIStyle(panelStyle);
         waitingStyle.normal.background = waitingTexture;
+
         activeStyle = new GUIStyle(panelStyle);
         activeStyle.normal.background = activeTexture;
 
         titleStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 25,
+            fontSize = 23,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter
         };
@@ -307,6 +331,11 @@ public class RanchUI : MonoBehaviour
             alignment = TextAnchor.UpperLeft
         };
         bodyStyle.normal.textColor = Color.white;
+
+        smallStyle = new GUIStyle(bodyStyle)
+        {
+            fontSize = 16
+        };
 
         centeredStyle = new GUIStyle(bodyStyle)
         {

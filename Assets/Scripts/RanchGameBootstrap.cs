@@ -12,7 +12,9 @@ public class RanchGameBootstrap : MonoBehaviour
 
     private void Awake()
     {
-        if (hasBootstrapped) return;
+        if (hasBootstrapped)
+            return;
+
         hasBootstrapped = true;
 
         RanchGameCore core = GetOrAdd<RanchGameCore>();
@@ -22,19 +24,39 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchTreeSystem tree = GetOrAdd<RanchTreeSystem>();
         RanchHealthSystem health = GetOrAdd<RanchHealthSystem>();
         RanchStaminaSystem stamina = GetOrAdd<RanchStaminaSystem>();
+        RanchEquipmentSystem equipment = GetOrAdd<RanchEquipmentSystem>();
         RanchCombatSystem combat = GetOrAdd<RanchCombatSystem>();
         RanchProgressionSystem progression = GetOrAdd<RanchProgressionSystem>();
+        RanchAreaSystem areas = GetOrAdd<RanchAreaSystem>();
         RanchBossSystem bosses = GetOrAdd<RanchBossSystem>();
         RanchWaveSystem waves = GetOrAdd<RanchWaveSystem>();
         RanchDrewSystem drew = GetOrAdd<RanchDrewSystem>();
         RanchShopSystem shop = GetOrAdd<RanchShopSystem>();
         RanchCJSystem cj = GetOrAdd<RanchCJSystem>();
         RanchSaveSystem save = GetOrAdd<RanchSaveSystem>();
+        RanchSettingsSystem settings = GetOrAdd<RanchSettingsSystem>();
         RanchWorldBuilder world = GetOrAdd<RanchWorldBuilder>();
         RanchUI ui = GetOrAdd<RanchUI>();
 
-        core.Initialize(inventory, bottles, upgrades, tree, health, stamina, combat,
-            progression, bosses, waves, drew, shop, cj, save);
+        core.Initialize(
+            inventory,
+            bottles,
+            upgrades,
+            tree,
+            health,
+            stamina,
+            equipment,
+            combat,
+            progression,
+            areas,
+            bosses,
+            waves,
+            drew,
+            shop,
+            cj,
+            save,
+            settings
+        );
 
         inventory.Initialize(core);
         bottles.Initialize(core);
@@ -42,22 +64,28 @@ public class RanchGameBootstrap : MonoBehaviour
         tree.Initialize(core);
         health.Initialize(core);
         stamina.Initialize(core);
+        equipment.Initialize(core);
         combat.Initialize(core);
         progression.Initialize(core);
+        areas.Initialize(core);
         bosses.Initialize(core);
         waves.Initialize(core);
         drew.Initialize(core);
         shop.Initialize(core);
         cj.Initialize(core);
         save.Initialize(core);
+        settings.Initialize(core);
         ui.Initialize(core);
         world.Initialize(core);
         world.BuildWorld();
 
         bool loaded = save.LoadOnStartup();
-        core.ShowMessage(loaded
-            ? "Save loaded. Press K for progression, Z to save, and X to load."
-            : "Welcome to Ranch Simulator. Extract Ranch, survive waves, level up, and overthrow CJ.", 8f);
+        core.ShowMessage(
+            loaded
+                ? "Save loaded. Press Escape for settings, H for HUD, Z to save, and X to load."
+                : "Welcome to Ranch Simulator. Explore the expanded areas, build your empire, and survive 30 waves.",
+            9f
+        );
     }
 
     private T GetOrAdd<T>() where T : Component

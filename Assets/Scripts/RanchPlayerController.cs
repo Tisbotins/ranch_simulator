@@ -7,15 +7,14 @@ public class RanchPlayerController : MonoBehaviour
     public float MoveSpeed = 6f;
     public float MouseSensitivity = 2.2f;
     public float InteractionRange = 3.2f;
+    public float FallRecoveryHeight = -8f;
 
     private RanchGameCore core;
     private CharacterController controller;
     private Camera playerCamera;
-    private Transform sword;
-    private Transform extractor;
     private float cameraPitch = 15f;
     private float yVelocity;
-    private float swordAnimation;
+    private float weaponAnimation;
     private bool heavyAnimation;
     private int animationCombo;
     private float slowMultiplier = 1f;
@@ -25,42 +24,69 @@ public class RanchPlayerController : MonoBehaviour
     private float dodgeTime;
     private float dodgeDuration;
     private float dodgeDistance;
+    private Vector3 lastSafePosition;
+    private float lastSafeRotation;
+    private float safeSampleTimer;
+    private Vector3 animatedBasePosition;
+    private Quaternion animatedBaseRotation;
+    private Transform lastAnimatedWeapon;
 
-    public void Initialize(RanchGameCore gameCore, CharacterController characterController,
-        Camera camera, Transform swordVisual, Transform extractorVisual)
+    public void Initialize(
+        RanchGameCore gameCore,
+        CharacterController characterController,
+        Camera camera)
     {
         core = gameCore;
         controller = characterController;
         playerCamera = camera;
-        sword = swordVisual;
-        extractor = extractorVisual;
+        lastSafePosition = transform.position;
+        lastSafeRotation = transform.eulerAngles.y;
         LockCursor();
-        UpdateTools();
+        core.Equipment.SetExtractionOverride(false);
     }
 
     private void Update()
     {
-        if (core == null || controller == null || playerCamera == null || core.GameWon ||
-            core.Health.IsDead || core.Shop.IsOpen || core.Progression.IsOpen) return;
+        if (core == null || controller == null || playerCamera == null)
+            return;
+
+        if (transform.position.y < FallRecoveryHeight)
+        {
+            ReturnToSafePosition();
+            core.ShowMessage("You fell off the map and were returned to safety.");
+        }
+
+        if (core.GameWon || core.Health.IsDead || core.Shop.IsOpen ||
+            core.Progression.IsOpen || core.Settings.IsOpen)
+        {
+            core.Equipment.SetExtractionOverride(false);
+            return;
+        }
 
         HandleCursor();
+        HandleEquipmentSlots();
         HandleMovement();
         UpdateCamera();
         HandleBottleSelection();
         HandleInteraction();
-        UpdateSwordAnimation();
-        UpdateTools();
+        UpdateWeaponAnimation();
+        UpdateSafetyPosition();
     }
 
     private void HandleMovement()
     {
         transform.Rotate(Vector3.up * Input.GetAxis("Mouse X") * MouseSensitivity);
-        cameraPitch = Mathf.Clamp(cameraPitch - Input.GetAxis("Mouse Y") * MouseSensitivity, -5f, 55f);
+        cameraPitch = Mathf.Clamp(
+            cameraPitch - Input.GetAxis("Mouse Y") * MouseSensitivity,
+            -5f,
+            55f
+        );
 
         if (slowTimer > 0f)
         {
             slowTimer -= Time.deltaTime;
-            if (slowTimer <= 0f) slowMultiplier = 1f;
+            if (slowTimer <= 0f)
+                slowMultiplier = 1f;
         }
 
         if (dodgeTime > 0f)
@@ -72,8 +98,12 @@ public class RanchPlayerController : MonoBehaviour
         }
 
         Vector3 move = GetDesiredMoveDirection();
-        if (move.magnitude > 1f) move.Normalize();
-        if (controller.isGrounded && yVelocity < 0f) yVelocity = -2f;
+        if (move.magnitude > 1f)
+            move.Normalize();
+
+        if (controller.isGrounded && yVelocity < 0f)
+            yVelocity = -2f;
+
         yVelocity += -18f * Time.deltaTime;
 
         float movementMultiplier = core.Combat.MovementMultiplier * slowMultiplier;
@@ -85,8 +115,10 @@ public class RanchPlayerController : MonoBehaviour
 
     public Vector3 GetDesiredMoveDirection()
     {
-        Vector3 move = transform.right * Input.GetAxisRaw("Horizontal") +
-                       transform.forward * Input.GetAxisRaw("Vertical");
+        Vector3 move =
+            transform.right * Input.GetAxisRaw("Horizontal") +
+            transform.forward * Input.GetAxisRaw("Vertical");
+
         return move.magnitude > 1f ? move.normalized : move;
     }
 
@@ -113,28 +145,82 @@ public class RanchPlayerController : MonoBehaviour
 
     public void PlayAttackAnimation(bool heavy, int combo)
     {
+        Transform weapon = core.Equipment.GetActiveWeaponVisual();
+        if (weapon == null)
+            return;
+
+        if (lastAnimatedWeapon != weapon)
+        {
+            ResetLastAnimatedWeapon();
+            lastAnimatedWeapon = weapon;
+            animatedBasePosition = weapon.localPosition;
+            animatedBaseRotation = weapon.localRotation;
+        }
+
         heavyAnimation = heavy;
         animationCombo = combo;
-        swordAnimation = heavy ? 0.75f : 0.30f;
+        weaponAnimation = heavy ? 0.75f : 0.32f;
     }
 
-    private void UpdateSwordAnimation()
+    private void UpdateWeaponAnimation()
     {
-        if (sword == null) return;
+        Transform weapon = core.Equipment.GetActiveWeaponVisual();
 
-        if (swordAnimation > 0f)
+        if (weapon == null || !weapon.gameObject.activeInHierarchy)
         {
-            float total = heavyAnimation ? 0.75f : 0.30f;
-            swordAnimation -= Time.deltaTime;
-            float progress = 1f - Mathf.Clamp01(swordAnimation / total);
-            float swing = Mathf.Sin(progress * Mathf.PI);
-            float angle = heavyAnimation ? 145f : 75f + animationCombo * 10f;
-            sword.localRotation = Quaternion.Euler(20f + swing * angle, 0f, -25f);
+            ResetLastAnimatedWeapon();
+            return;
         }
-        else
+
+        if (lastAnimatedWeapon != weapon)
         {
-            sword.localRotation = Quaternion.Euler(20f, 0f, -25f);
+            ResetLastAnimatedWeapon();
+            lastAnimatedWeapon = weapon;
+            animatedBasePosition = weapon.localPosition;
+            animatedBaseRotation = weapon.localRotation;
         }
+
+        if (weaponAnimation <= 0f)
+        {
+            weapon.localPosition = animatedBasePosition;
+            weapon.localRotation = animatedBaseRotation;
+            return;
+        }
+
+        float total = heavyAnimation ? 0.75f : 0.32f;
+        weaponAnimation -= Time.deltaTime;
+        float progress = 1f - Mathf.Clamp01(weaponAnimation / total);
+        float pulse = Mathf.Sin(progress * Mathf.PI);
+
+        switch (core.Equipment.EquippedWeapon)
+        {
+            case RanchWeaponType.Spear:
+                weapon.localPosition = animatedBasePosition + Vector3.forward * pulse * (heavyAnimation ? 1.2f : 0.7f);
+                weapon.localRotation = animatedBaseRotation * Quaternion.Euler(-pulse * 12f, 0f, 0f);
+                break;
+
+            case RanchWeaponType.Bow:
+                weapon.localPosition = animatedBasePosition + Vector3.back * pulse * 0.18f;
+                weapon.localRotation = animatedBaseRotation * Quaternion.Euler(0f, pulse * 8f, 0f);
+                break;
+
+            default:
+                float angle = heavyAnimation ? 145f : 75f + animationCombo * 10f;
+                weapon.localRotation = animatedBaseRotation * Quaternion.Euler(pulse * angle, 0f, 0f);
+                break;
+        }
+    }
+
+    private void ResetLastAnimatedWeapon()
+    {
+        if (lastAnimatedWeapon != null)
+        {
+            lastAnimatedWeapon.localPosition = animatedBasePosition;
+            lastAnimatedWeapon.localRotation = animatedBaseRotation;
+        }
+
+        lastAnimatedWeapon = null;
+        weaponAnimation = 0f;
     }
 
     private void UpdateCamera()
@@ -144,29 +230,52 @@ public class RanchPlayerController : MonoBehaviour
         playerCamera.transform.LookAt(transform.position + new Vector3(0f, 1.4f, 0f));
     }
 
+    private void HandleEquipmentSlots()
+    {
+        if (Input.GetKeyDown(KeyCode.Alpha1))
+            core.Equipment.SelectSlot(0);
+        if (Input.GetKeyDown(KeyCode.Alpha2))
+            core.Equipment.SelectSlot(1);
+        if (Input.GetKeyDown(KeyCode.Alpha3))
+            core.Equipment.SelectSlot(2);
+    }
+
     private void HandleBottleSelection()
     {
-        if (Input.GetKeyDown(KeyCode.LeftBracket)) core.Bottles.CycleSelection(-1);
-        if (Input.GetKeyDown(KeyCode.RightBracket)) core.Bottles.CycleSelection(1);
-        for (int i = 0; i < RanchBottleSystem.TierCount; i++)
-        {
-            KeyCode key = (KeyCode)((int)KeyCode.Alpha1 + i);
-            if (Input.GetKeyDown(key)) core.Bottles.SelectTier(i);
-        }
+        if (Input.GetKeyDown(KeyCode.LeftBracket))
+            core.Bottles.CycleSelection(-1);
+        if (Input.GetKeyDown(KeyCode.RightBracket))
+            core.Bottles.CycleSelection(1);
     }
 
     private void HandleInteraction()
     {
         RanchInteractable nearest = FindNearestInteractable();
         IsExtracting = false;
-        if (nearest == null) { CurrentPrompt = ""; return; }
+
+        if (nearest == null)
+        {
+            CurrentPrompt = "";
+            core.Equipment.SetExtractionOverride(false);
+            return;
+        }
+
         CurrentPrompt = nearest.Prompt;
+
         if (nearest.UsesHeldInteraction)
         {
             IsExtracting = Input.GetKey(KeyCode.E);
-            if (IsExtracting) nearest.Interact(this, true, Time.deltaTime);
+            core.Equipment.SetExtractionOverride(IsExtracting);
+
+            if (IsExtracting)
+                nearest.Interact(this, true, Time.deltaTime);
         }
-        else if (Input.GetKeyDown(KeyCode.E)) nearest.Interact(this, false, 0f);
+        else
+        {
+            core.Equipment.SetExtractionOverride(false);
+            if (Input.GetKeyDown(KeyCode.E))
+                nearest.Interact(this, false, 0f);
+        }
     }
 
     private RanchInteractable FindNearestInteractable()
@@ -174,38 +283,65 @@ public class RanchPlayerController : MonoBehaviour
         Collider[] colliders = Physics.OverlapSphere(transform.position, InteractionRange);
         RanchInteractable nearest = null;
         float nearestDistance = float.MaxValue;
+
         foreach (Collider collider in colliders)
         {
             RanchInteractable interactable = collider.GetComponentInParent<RanchInteractable>();
-            if (interactable == null) continue;
+            if (interactable == null)
+                continue;
+
             float distance = Vector3.Distance(transform.position, interactable.transform.position);
-            if (distance < nearestDistance) { nearest = interactable; nearestDistance = distance; }
+            if (distance < nearestDistance)
+            {
+                nearest = interactable;
+                nearestDistance = distance;
+            }
         }
+
         return nearest;
     }
 
-    private void UpdateTools()
+    private void UpdateSafetyPosition()
     {
-        if (sword != null) sword.gameObject.SetActive(!IsExtracting);
-        if (extractor != null) extractor.gameObject.SetActive(IsExtracting);
+        if (!controller.isGrounded || dodgeTime > 0f)
+            return;
+
+        safeSampleTimer -= Time.deltaTime;
+        if (safeSampleTimer > 0f)
+            return;
+
+        safeSampleTimer = 0.35f;
+        lastSafePosition = transform.position;
+        lastSafeRotation = transform.eulerAngles.y;
+    }
+
+    public void ReturnToSafePosition()
+    {
+        Teleport(lastSafePosition, lastSafeRotation);
+        yVelocity = 0f;
+        knockbackVelocity = Vector3.zero;
     }
 
     public void Teleport(Vector3 position, float rotationY)
     {
-        if (controller != null) controller.enabled = false;
+        if (controller != null)
+            controller.enabled = false;
+
         transform.position = position;
         transform.rotation = Quaternion.Euler(0f, rotationY, 0f);
-        if (controller != null) controller.enabled = true;
+
+        if (controller != null)
+            controller.enabled = true;
+
+        lastSafePosition = position;
+        lastSafeRotation = rotationY;
+        yVelocity = 0f;
     }
 
     private void HandleCursor()
     {
-        if (Input.GetKeyDown(KeyCode.Escape))
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        if (Input.GetMouseButtonDown(0) && Cursor.visible) LockCursor();
+        if (Input.GetMouseButtonDown(0) && Cursor.visible)
+            LockCursor();
     }
 
     private static void LockCursor()

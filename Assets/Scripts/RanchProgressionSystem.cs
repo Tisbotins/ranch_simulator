@@ -61,7 +61,7 @@ public class RanchProgressionSystem : MonoBehaviour
 
     private void Update()
     {
-        if (core == null || core.GameWon || core.Health.IsDead) return;
+        if (core == null || core.GameWon || core.Health.IsDead || core.Settings.IsOpen) return;
 
         if (Input.GetKeyDown(KeyCode.K))
             ToggleMenu();
@@ -102,7 +102,7 @@ public class RanchProgressionSystem : MonoBehaviour
 
     public void OpenMenu()
     {
-        if (IsOpen || core.Shop.IsOpen || core.GameWon || core.Health.IsDead) return;
+        if (IsOpen || core.Shop.IsOpen || core.Settings.IsOpen || core.GameWon || core.Health.IsDead) return;
         IsOpen = true;
         previousTimeScale = Time.timeScale;
         Time.timeScale = 0f;
@@ -123,47 +123,70 @@ public class RanchProgressionSystem : MonoBehaviour
 
     public void BuyCombatTraining()
     {
-        SpendPoint(0, "Combat Training");
+        CombatTraining = SpendPoint(
+            CombatTraining,
+            "Combat Training"
+        );
     }
 
     public void BuySurvivalTraining()
     {
-        if (SpendPoint(1, "Survival Training"))
+        int previousLevel = SurvivalTraining;
+
+        SurvivalTraining = SpendPoint(
+            SurvivalTraining,
+            "Survival Training"
+        );
+
+        if (SurvivalTraining > previousLevel)
+        {
             core.Stamina.RestoreFull();
+        }
     }
 
     public void BuyEngineeringTraining()
     {
-        SpendPoint(2, "Ranch Engineering");
+        EngineeringTraining = SpendPoint(
+            EngineeringTraining,
+            "Ranch Engineering"
+        );
     }
 
-    private bool SpendPoint(int branch, string skillName)
+    private int SpendPoint(
+        int skill,
+        string skillName)
     {
-        int currentLevel = branch == 0 ? CombatTraining :
-            (branch == 1 ? SurvivalTraining : EngineeringTraining);
-
-        if (currentLevel >= 8)
+        if (skill >= 8)
         {
-            core.ShowMessage(skillName + " is already maxed.");
-            return false;
+            core.ShowMessage(
+                skillName +
+                " is already maxed."
+            );
+
+            return skill;
         }
 
         if (SkillPoints <= 0)
         {
-            core.ShowMessage("You need a skill point. Earn XP from waves, sales, bosses, and construction.");
-            return false;
+            core.ShowMessage(
+                "You need a skill point. Earn XP from waves, sales, bosses, and construction."
+            );
+
+            return skill;
         }
 
         SkillPoints--;
-        if (branch == 0) CombatTraining++;
-        else if (branch == 1) SurvivalTraining++;
-        else EngineeringTraining++;
+        skill++;
 
-        int newLevel = branch == 0 ? CombatTraining :
-            (branch == 1 ? SurvivalTraining : EngineeringTraining);
-        core.ShowMessage(skillName + " upgraded to Level " + newLevel + ".");
+        core.ShowMessage(
+            skillName +
+            " upgraded to Level " +
+            skill +
+            "."
+        );
+
         core.Save.RequestSave();
-        return true;
+        return skill;
     }
 
     public void RestoreState(int level, float experience, int skillPoints,
@@ -198,7 +221,7 @@ public class RanchProgressionSystem : MonoBehaviour
 
         DrawSkillCard(new Rect(150f, 245f, 390f, 440f), "COMBAT TRAINING",
             CombatTraining,
-            $"+9% sword damage per level\n+2% critical chance per level\n+8% critical damage per level\n\nCurrent damage multiplier: {DamageMultiplier:0.00}x\nCurrent critical chance: {CriticalChance * 100f:F0}%",
+            $"+9% weapon damage per level\n+2% critical chance per level\n+8% critical damage per level\n\nCurrent damage multiplier: {DamageMultiplier:0.00}x\nCurrent critical chance: {CriticalChance * 100f:F0}%",
             BuyCombatTraining);
 
         DrawSkillCard(new Rect(605f, 245f, 390f, 440f), "SURVIVAL TRAINING",

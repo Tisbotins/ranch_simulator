@@ -5,13 +5,34 @@ public class RanchWorldBuilder : MonoBehaviour
 {
     private RanchGameCore core;
     private bool built;
-    private Material green, brown, blue, yellow, red, white, black, ranch, purple, teal, gray, gold;
 
-    public void Initialize(RanchGameCore gameCore) => core = gameCore;
+    private Material green;
+    private Material lightGreen;
+    private Material sand;
+    private Material stone;
+    private Material brown;
+    private Material blue;
+    private Material yellow;
+    private Material red;
+    private Material white;
+    private Material black;
+    private Material ranch;
+    private Material purple;
+    private Material teal;
+    private Material gray;
+    private Material gold;
+    private Material translucentWhite;
+
+    public void Initialize(RanchGameCore gameCore)
+    {
+        core = gameCore;
+    }
 
     public void BuildWorld()
     {
-        if (built || core == null) return;
+        if (built || core == null)
+            return;
+
         built = true;
         CreateMaterials();
 
@@ -19,14 +40,63 @@ public class RanchWorldBuilder : MonoBehaviour
         Transform enemies = new GameObject("Ranch Raiders").transform;
         enemies.SetParent(world);
 
-        CreateGround(world);
+        CreateExpandedGround(world);
+        CreateAreaBarriers(world);
+
         Transform tree = CreateRanchTree(world);
-        GameObject bottleStation = CreateStation(world, "Bottle Station", new Vector3(-8f, 0.5f, 0f), blue, RanchStationType.Bottle, "BOTTLE STATION");
-        CreateStation(world, "Sell Station", new Vector3(8f, 0.5f, 0f), yellow, RanchStationType.Sell, "SELL STATION");
-        CreateStation(world, "Bottle Upgrade Station", new Vector3(0f, 0.5f, -8f), red, RanchStationType.BottleUpgrade, "BOTTLE UPGRADES");
-        CreateStation(world, "Drew Station", new Vector3(-8f, 0.5f, -8f), white, RanchStationType.Drew, "DREW STATION");
-        CreateStation(world, "CJ Gate", new Vector3(8f, 0.5f, 8f), black, RanchStationType.CJGate, "CJ GATE");
-        CreateStation(world, "Ranch Empire Shop Terminal", new Vector3(7f, 0.5f, -8f), teal, RanchStationType.Shop, "RANCH EMPIRE SHOP\nPress E or P");
+        GameObject bottleStation = CreateStation(
+            world,
+            "Bottle Station",
+            new Vector3(-13f, 0.5f, 0f),
+            blue,
+            RanchStationType.Bottle,
+            "BOTTLE STATION"
+        );
+
+        CreateStation(
+            world,
+            "Sell Station",
+            new Vector3(13f, 0.5f, 0f),
+            yellow,
+            RanchStationType.Sell,
+            "SELL STATION"
+        );
+
+        CreateStation(
+            world,
+            "Bottle Upgrade Station",
+            new Vector3(-2f, 0.5f, -15f),
+            red,
+            RanchStationType.BottleUpgrade,
+            "BOTTLE UPGRADES"
+        );
+
+        CreateStation(
+            world,
+            "Drew Station",
+            new Vector3(-15f, 0.5f, -15f),
+            white,
+            RanchStationType.Drew,
+            "DREW STATION"
+        );
+
+        CreateStation(
+            world,
+            "Ranch Empire Shop Terminal",
+            new Vector3(13f, 0.8f, -15f),
+            teal,
+            RanchStationType.Shop,
+            "RANCH EMPIRE SHOP\nPress E or P"
+        );
+
+        CreateStation(
+            world,
+            "CJ Gate",
+            new Vector3(160f, 0.8f, 24f),
+            black,
+            RanchStationType.CJGate,
+            "CJ GATE"
+        );
 
         Transform arenaPlayerStart;
         Transform arenaBossSpawn;
@@ -48,16 +118,44 @@ public class RanchWorldBuilder : MonoBehaviour
     public static Material CreateRuntimeMaterial(Color color)
     {
         Shader shader = Shader.Find("Standard");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null) shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+
         Material material = new Material(shader);
         material.color = color;
+        return material;
+    }
+
+    private static Material CreateTransparentMaterial(Color color)
+    {
+        Material material = CreateRuntimeMaterial(color);
+
+        if (material.HasProperty("_Mode"))
+        {
+            material.SetFloat("_Mode", 3f);
+            material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            material.SetInt("_ZWrite", 0);
+            material.DisableKeyword("_ALPHATEST_ON");
+            material.EnableKeyword("_ALPHABLEND_ON");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        }
+
+        if (material.HasProperty("_Surface"))
+            material.SetFloat("_Surface", 1f);
+
+        material.renderQueue = 3000;
         return material;
     }
 
     private void CreateMaterials()
     {
         green = CreateRuntimeMaterial(new Color(0.25f, 0.65f, 0.25f));
+        lightGreen = CreateRuntimeMaterial(new Color(0.38f, 0.72f, 0.34f));
+        sand = CreateRuntimeMaterial(new Color(0.60f, 0.54f, 0.34f));
+        stone = CreateRuntimeMaterial(new Color(0.40f, 0.42f, 0.46f));
         brown = CreateRuntimeMaterial(new Color(0.35f, 0.20f, 0.09f));
         blue = CreateRuntimeMaterial(new Color(0.20f, 0.45f, 0.90f));
         yellow = CreateRuntimeMaterial(new Color(0.95f, 0.75f, 0.25f));
@@ -69,22 +167,98 @@ public class RanchWorldBuilder : MonoBehaviour
         teal = CreateRuntimeMaterial(new Color(0.08f, 0.60f, 0.55f));
         gray = CreateRuntimeMaterial(new Color(0.32f, 0.34f, 0.38f));
         gold = CreateRuntimeMaterial(new Color(1f, 0.75f, 0.12f));
+        translucentWhite = CreateTransparentMaterial(new Color(1f, 1f, 1f, 0.28f));
     }
 
-    private void CreateGround(Transform parent)
+    private void CreateExpandedGround(Transform parent)
     {
-        GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        ground.name = "McMinnville Oregon Ground";
-        ground.transform.SetParent(parent);
-        ground.transform.localScale = new Vector3(7f, 1f, 7f);
-        ground.GetComponent<Renderer>().material = green;
+        CreateFloorSlab(parent, "Ranch Homestead Floor", new Vector3(-5f, -0.5f, 0f), new Vector3(80f, 1f, 90f), green);
+        CreateFloorSlab(parent, "Laboratory District Floor", new Vector3(57.5f, -0.5f, 0f), new Vector3(45f, 1f, 90f), lightGreen);
+        CreateFloorSlab(parent, "Industrial Expanse Floor", new Vector3(105f, -0.5f, 0f), new Vector3(50f, 1f, 90f), sand);
+        CreateFloorSlab(parent, "Citadel Grounds Floor", new Vector3(155f, -0.5f, 0f), new Vector3(50f, 1f, 90f), stone);
+
+        CreateWall(parent, "West Perimeter", new Vector3(-45f, 2.5f, 0f), new Vector3(1f, 5f, 90f), translucentWhite);
+        CreateWall(parent, "East Perimeter", new Vector3(180f, 2.5f, 0f), new Vector3(1f, 5f, 90f), translucentWhite);
+        CreateWall(parent, "North Perimeter", new Vector3(67.5f, 2.5f, 45f), new Vector3(226f, 5f, 1f), translucentWhite);
+        CreateWall(parent, "South Perimeter", new Vector3(67.5f, 2.5f, -45f), new Vector3(226f, 5f, 1f), translucentWhite);
+    }
+
+    private void CreateFloorSlab(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
+    {
+        GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        floor.name = name;
+        floor.transform.SetParent(parent);
+        floor.transform.position = position;
+        floor.transform.localScale = scale;
+        floor.GetComponent<Renderer>().material = material;
+    }
+
+    private void CreateAreaBarriers(Transform parent)
+    {
+        CreateAreaGate(parent, 1, 35f);
+        CreateAreaGate(parent, 2, 80f);
+        CreateAreaGate(parent, 3, 130f);
+    }
+
+    private void CreateAreaGate(Transform parent, int areaIndex, float xPosition)
+    {
+        Transform root = new GameObject(core.Areas.GetAreaName(areaIndex) + " Barrier").transform;
+        root.SetParent(parent);
+        root.position = new Vector3(xPosition, 0f, 0f);
+
+        CreateWall(root, "Barrier South Segment", new Vector3(0f, 2.5f, -25.5f), new Vector3(0.8f, 5f, 39f), translucentWhite, true);
+        CreateWall(root, "Barrier North Segment", new Vector3(0f, 2.5f, 25.5f), new Vector3(0.8f, 5f, 39f), translucentWhite, true);
+
+        GameObject blocker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        blocker.name = "Unlockable White Gate";
+        blocker.transform.SetParent(root, false);
+        blocker.transform.localPosition = new Vector3(0f, 2.5f, 0f);
+        blocker.transform.localScale = new Vector3(0.8f, 5f, 12f);
+        blocker.GetComponent<Renderer>().material = translucentWhite;
+
+        BoxCollider interaction = root.gameObject.AddComponent<BoxCollider>();
+        interaction.center = new Vector3(-1.5f, 2f, 0f);
+        interaction.size = new Vector3(5f, 4f, 14f);
+        interaction.isTrigger = true;
+
+        TextMesh label = CreateLabel(
+            root,
+            core.Areas.GetAreaName(areaIndex).ToUpperInvariant(),
+            new Vector3(0f, 7f, 0f),
+            false
+        );
+        label.color = Color.white;
+
+        RanchAreaGate gate = root.gameObject.AddComponent<RanchAreaGate>();
+        gate.Initialize(core, areaIndex, blocker, label);
+    }
+
+    private void CreateWall(
+        Transform parent,
+        string name,
+        Vector3 position,
+        Vector3 scale,
+        Material material,
+        bool local = false)
+    {
+        GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        wall.name = name;
+        wall.transform.SetParent(parent, false);
+
+        if (local)
+            wall.transform.localPosition = position;
+        else
+            wall.transform.position = position;
+
+        wall.transform.localScale = scale;
+        wall.GetComponent<Renderer>().material = material;
     }
 
     private Transform CreateRanchTree(Transform parent)
     {
         GameObject root = new GameObject("Ranch Tree");
         root.transform.SetParent(parent);
-        root.transform.position = new Vector3(0f, 0f, 8f);
+        root.transform.position = new Vector3(0f, 0f, 12f);
 
         RanchTreeInteractable interactable = root.AddComponent<RanchTreeInteractable>();
         interactable.Initialize(core.Tree);
@@ -102,20 +276,28 @@ public class RanchWorldBuilder : MonoBehaviour
         return root.transform;
     }
 
-    private GameObject CreateStation(Transform parent, string objectName, Vector3 position, Material material, RanchStationType type, string label)
+    private GameObject CreateStation(
+        Transform parent,
+        string objectName,
+        Vector3 position,
+        Material material,
+        RanchStationType type,
+        string label)
     {
         GameObject station = GameObject.CreatePrimitive(PrimitiveType.Cube);
         station.name = objectName;
         station.transform.SetParent(parent);
         station.transform.position = position;
-        station.transform.localScale = new Vector3(2.4f, type == RanchStationType.Shop ? 1.6f : 1f, 2.4f);
+        station.transform.localScale = new Vector3(2.8f, type == RanchStationType.Shop ? 1.8f : 1f, 2.8f);
         station.GetComponent<Renderer>().material = material;
+
         RanchStation component = station.AddComponent<RanchStation>();
         component.Initialize(core, type);
+
         TextMesh labelMesh = CreateLabel(
             station.transform,
             label,
-            new Vector3(0f, type == RanchStationType.Shop ? 2.2f : 1.8f, 0f),
+            new Vector3(0f, type == RanchStationType.Shop ? 2.5f : 2f, 0f),
             false
         );
 
@@ -132,25 +314,30 @@ public class RanchWorldBuilder : MonoBehaviour
     {
         GameObject player = new GameObject("Player");
         player.transform.SetParent(parent);
-        player.transform.position = new Vector3(0f, 1.1f, -3f);
+        player.transform.position = new Vector3(0f, 1.1f, -10f);
 
         CharacterController controller = player.AddComponent<CharacterController>();
         controller.height = 2f;
         controller.radius = 0.45f;
         controller.center = Vector3.zero;
+        controller.skinWidth = 0.08f;
+        controller.stepOffset = 0.35f;
 
         GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         body.name = "Player Body";
         body.transform.SetParent(player.transform, false);
         body.GetComponent<Renderer>().material = blue;
         Collider bodyCollider = body.GetComponent<Collider>();
-        if (bodyCollider != null) Destroy(bodyCollider);
+        if (bodyCollider != null)
+            Destroy(bodyCollider);
 
-        GameObject handAnchor = new GameObject("Right Hand Tool Anchor");
+        GameObject handAnchor = new GameObject("Right Hand Equipment Anchor");
         handAnchor.transform.SetParent(player.transform, false);
         handAnchor.transform.localPosition = new Vector3(0.72f, 0.05f, 0.05f);
 
         Transform sword = CreateSword(handAnchor.transform);
+        Transform spear = CreateSpear(handAnchor.transform);
+        Transform bow = CreateBow(handAnchor.transform);
         Transform extractor = CreateExtractor(handAnchor.transform);
 
         Camera camera = Camera.main;
@@ -162,7 +349,8 @@ public class RanchWorldBuilder : MonoBehaviour
         }
 
         RanchPlayerController playerController = player.AddComponent<RanchPlayerController>();
-        playerController.Initialize(core, controller, camera, sword, extractor);
+        playerController.Initialize(core, controller, camera);
+        core.Equipment.RegisterVisuals(extractor, sword, spear, bow);
         return playerController;
     }
 
@@ -177,12 +365,38 @@ public class RanchWorldBuilder : MonoBehaviour
         return root.transform;
     }
 
+    private Transform CreateSpear(Transform anchor)
+    {
+        GameObject root = new GameObject("Ranch Spear");
+        root.transform.SetParent(anchor, false);
+        root.transform.localPosition = new Vector3(0f, 0.15f, 0.1f);
+        root.transform.localRotation = Quaternion.Euler(75f, 0f, 0f);
+        CreatePrimitive(root.transform, PrimitiveType.Cylinder, "Spear Shaft", new Vector3(0f, 0.8f, 0f), new Vector3(0.07f, 1.4f, 0.07f), brown, false);
+        CreatePrimitive(root.transform, PrimitiveType.Cube, "Spear Head", new Vector3(0f, 2.3f, 0f), new Vector3(0.22f, 0.48f, 0.10f), white, false);
+        return root.transform;
+    }
+
+    private Transform CreateBow(Transform anchor)
+    {
+        GameObject root = new GameObject("Ranch Bow");
+        root.transform.SetParent(anchor, false);
+        root.transform.localPosition = new Vector3(0f, 0.25f, 0.1f);
+        root.transform.localRotation = Quaternion.Euler(0f, 0f, -10f);
+
+        CreatePrimitive(root.transform, PrimitiveType.Cube, "Bow Upper Limb", new Vector3(0f, 0.75f, 0f), new Vector3(0.10f, 0.75f, 0.10f), brown, false).transform.localRotation = Quaternion.Euler(0f, 0f, -18f);
+        CreatePrimitive(root.transform, PrimitiveType.Cube, "Bow Lower Limb", new Vector3(0f, -0.75f, 0f), new Vector3(0.10f, 0.75f, 0.10f), brown, false).transform.localRotation = Quaternion.Euler(0f, 0f, 18f);
+        CreatePrimitive(root.transform, PrimitiveType.Cube, "Bow Grip", Vector3.zero, new Vector3(0.16f, 0.35f, 0.14f), black, false);
+        CreatePrimitive(root.transform, PrimitiveType.Cube, "Bow String", Vector3.zero, new Vector3(0.025f, 1.55f, 0.025f), white, false);
+        return root.transform;
+    }
+
     private Transform CreateExtractor(Transform anchor)
     {
         GameObject root = new GameObject("Held Ranch Extractor");
         root.transform.SetParent(anchor, false);
         root.transform.localPosition = new Vector3(0f, 0.05f, 0.05f);
         root.transform.localRotation = Quaternion.Euler(0f, 0f, -8f);
+
         GameObject body = CreatePrimitive(root.transform, PrimitiveType.Cylinder, "Extractor Body", Vector3.zero, new Vector3(0.23f, 0.55f, 0.23f), purple, false);
         body.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
         CreatePrimitive(root.transform, PrimitiveType.Cube, "Extractor Nozzle", new Vector3(0f, 0f, 0.65f), new Vector3(0.14f, 0.14f, 0.8f), black, false);
@@ -194,7 +408,7 @@ public class RanchWorldBuilder : MonoBehaviour
     {
         GameObject drew = new GameObject("Drew");
         drew.transform.SetParent(parent);
-        drew.transform.position = new Vector3(-6f, 1.1f, -6f);
+        drew.transform.position = new Vector3(-18f, 1.1f, -10f);
         CreatePrimitive(drew.transform, PrimitiveType.Capsule, "Drew Body", Vector3.zero, Vector3.one, white, true);
         CreatePrimitive(drew.transform, PrimitiveType.Cylinder, "Drew Hat", new Vector3(0f, 1.25f, 0f), new Vector3(0.85f, 0.12f, 0.85f), yellow, true);
         CreateLabel(drew.transform, "DREW\nHelper NPC", new Vector3(0f, 2.7f, 0f), false);
@@ -203,64 +417,109 @@ public class RanchWorldBuilder : MonoBehaviour
 
     private void CreateEmpireVisual(Transform parent)
     {
-        Transform root = new GameObject("Ranch Empire Structure").transform;
+        Transform root = new GameObject("Ranch Empire Structures").transform;
         root.SetParent(parent);
-        root.position = new Vector3(16f, 0f, -14f);
+        root.position = Vector3.zero;
+
         List<GameObject> groups = new List<GameObject>();
+        groups.Add(CreateRoadsideStand(root, new Vector3(23f, 0f, -28f)));
+        groups.Add(CreateWorkshop(root, new Vector3(23f, 0f, 26f)));
+        groups.Add(CreateLaboratory(root, new Vector3(51f, 0f, 0f), false));
+        groups.Add(CreateLaboratory(root, new Vector3(68f, 0f, -24f), true));
+        groups.Add(CreateResearchCampus(root, new Vector3(66f, 0f, 24f)));
+        groups.Add(CreateIndustrialComplex(root, new Vector3(98f, 0f, -10f)));
+        groups.Add(CreateStronghold(root, new Vector3(113f, 0f, 20f)));
+        groups.Add(CreateCitadel(root, new Vector3(145f, 0f, -8f), false));
+        groups.Add(CreateCitadel(root, new Vector3(165f, 0f, 10f), true));
 
-        groups.Add(CreateEmpireGroup(root, "Roadside Ranch Stand", PrimitiveType.Cube, new Vector3(0f, 1f, 0f), new Vector3(4f, 2f, 2f), brown));
-        groups.Add(CreateEmpireGroup(root, "Ranch Workshop", PrimitiveType.Cube, new Vector3(0f, 2f, 0f), new Vector3(6f, 4f, 6f), brown));
-        groups.Add(CreateEmpireGroup(root, "Ranch Laboratory", PrimitiveType.Cube, new Vector3(-4f, 2f, 0f), new Vector3(4f, 4f, 6f), white));
-        groups.Add(CreateEmpireGroup(root, "Advanced Ranch Laboratory", PrimitiveType.Cube, new Vector3(4f, 2f, -4f), new Vector3(5f, 4f, 4f), blue));
-        groups.Add(CreateEmpireGroup(root, "Ranch Research Campus", PrimitiveType.Cube, new Vector3(0f, 6f, 0f), new Vector3(3f, 8f, 3f), blue));
-        groups.Add(CreateEmpireGroup(root, "Ranch Industrial Complex", PrimitiveType.Cube, new Vector3(0f, 2f, 6f), new Vector3(10f, 4f, 5f), gray));
-
-        GameObject stronghold = new GameObject("Ranch Stronghold");
-        stronghold.transform.SetParent(root, false);
-        CreatePrimitive(stronghold.transform, PrimitiveType.Cube, "North Wall", new Vector3(0f, 2f, -8f), new Vector3(18f, 4f, 1f), gray, true);
-        CreatePrimitive(stronghold.transform, PrimitiveType.Cube, "South Wall", new Vector3(0f, 2f, 8f), new Vector3(18f, 4f, 1f), gray, true);
-        CreatePrimitive(stronghold.transform, PrimitiveType.Cube, "West Wall", new Vector3(-8f, 2f, 0f), new Vector3(1f, 4f, 18f), gray, true);
-        CreatePrimitive(stronghold.transform, PrimitiveType.Cube, "East Wall", new Vector3(8f, 2f, 0f), new Vector3(1f, 4f, 18f), gray, true);
-        groups.Add(stronghold);
-
-        groups.Add(CreateEmpireGroup(root, "Ranch Citadel", PrimitiveType.Cube, new Vector3(0f, 9f, 0f), new Vector3(6f, 12f, 6f), black));
-        groups.Add(CreateEmpireGroup(root, "Golden Ranch Citadel", PrimitiveType.Cylinder, new Vector3(0f, 19f, 0f), new Vector3(1.2f, 3f, 1.2f), gold));
+        Transform statusMarker = new GameObject("Empire Status Marker").transform;
+        statusMarker.SetParent(parent);
+        statusMarker.position = new Vector3(23f, 0f, -28f);
 
         GameObject labelObject = new GameObject("Ranch Empire Label");
         TextMesh label = labelObject.AddComponent<TextMesh>();
-        label.fontSize = 55;
-        label.characterSize = 0.08f;
+        label.fontSize = 50;
+        label.characterSize = 0.075f;
         label.anchor = TextAnchor.MiddleCenter;
         label.alignment = TextAlignment.Center;
         label.color = Color.white;
         RanchWorldLabel follower = labelObject.AddComponent<RanchWorldLabel>();
-        follower.Initialize(root, new Vector3(0f, 16f, 0f), false);
+        follower.Initialize(statusMarker, new Vector3(0f, 7f, 0f), false);
 
         core.Shop.RegisterEmpireVisual(root, groups.ToArray(), label);
     }
 
-    private GameObject CreateEmpireGroup(Transform root, string groupName, PrimitiveType type, Vector3 position, Vector3 scale, Material material)
+    private GameObject CreateRoadsideStand(Transform root, Vector3 position)
     {
-        GameObject group = new GameObject(groupName);
-        group.transform.SetParent(root, false);
-        CreatePrimitive(group.transform, type, groupName + " Visual", position, scale, material, true);
+        GameObject group = NewEmpireGroup(root, "Roadside Ranch Stand", position);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Stand Counter", new Vector3(0f, 1f, 0f), new Vector3(5f, 2f, 2f), brown, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Stand Roof", new Vector3(0f, 3.2f, 0f), new Vector3(7f, 0.35f, 4f), red, true);
         return group;
     }
 
-    private GameObject CreatePrimitive(Transform parent, PrimitiveType type, string objectName, Vector3 localPosition, Vector3 localScale, Material material, bool keepCollider)
+    private GameObject CreateWorkshop(Transform root, Vector3 position)
     {
-        GameObject piece = GameObject.CreatePrimitive(type);
-        piece.name = objectName;
-        piece.transform.SetParent(parent, false);
-        piece.transform.localPosition = localPosition;
-        piece.transform.localScale = localScale;
-        piece.GetComponent<Renderer>().material = material;
-        if (!keepCollider)
-        {
-            Collider collider = piece.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-        }
-        return piece;
+        GameObject group = NewEmpireGroup(root, "Ranch Workshop", position);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Workshop Building", new Vector3(0f, 2.5f, 0f), new Vector3(10f, 5f, 9f), brown, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Workshop Door", new Vector3(0f, 1.5f, -4.6f), new Vector3(2f, 3f, 0.3f), black, false);
+        return group;
+    }
+
+    private GameObject CreateLaboratory(Transform root, Vector3 position, bool advanced)
+    {
+        GameObject group = NewEmpireGroup(root, advanced ? "Advanced Ranch Laboratory" : "Ranch Laboratory", position);
+        Material bodyMaterial = advanced ? blue : white;
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Laboratory Main Building", new Vector3(0f, 3f, 0f), new Vector3(12f, 6f, 12f), bodyMaterial, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cylinder, "Laboratory Ranch Tank", new Vector3(7f, 3f, 0f), new Vector3(2f, 3f, 2f), ranch, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Laboratory Entrance", new Vector3(0f, 1.8f, -6.2f), new Vector3(2.5f, 3.6f, 0.3f), black, false);
+        return group;
+    }
+
+    private GameObject CreateResearchCampus(Transform root, Vector3 position)
+    {
+        GameObject group = NewEmpireGroup(root, "Ranch Research Campus", position);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Research Campus Base", new Vector3(0f, 2f, 0f), new Vector3(14f, 4f, 12f), white, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cylinder, "Research Tower", new Vector3(0f, 8f, 0f), new Vector3(2f, 6f, 2f), blue, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cylinder, "Research Antenna", new Vector3(0f, 15f, 0f), new Vector3(0.35f, 2f, 0.35f), yellow, true);
+        return group;
+    }
+
+    private GameObject CreateIndustrialComplex(Transform root, Vector3 position)
+    {
+        GameObject group = NewEmpireGroup(root, "Ranch Industrial Complex", position);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Industrial Hall", new Vector3(0f, 3f, 0f), new Vector3(16f, 6f, 14f), gray, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cylinder, "Industrial Stack One", new Vector3(-5f, 9f, 2f), new Vector3(1f, 5f, 1f), black, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cylinder, "Industrial Stack Two", new Vector3(5f, 9f, 2f), new Vector3(1f, 5f, 1f), black, true);
+        return group;
+    }
+
+    private GameObject CreateStronghold(Transform root, Vector3 position)
+    {
+        GameObject group = NewEmpireGroup(root, "Ranch Stronghold", position);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Stronghold Back Wall", new Vector3(0f, 3f, 8f), new Vector3(18f, 6f, 1f), gray, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Stronghold Left Wall", new Vector3(-8f, 3f, 0f), new Vector3(1f, 6f, 16f), gray, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Stronghold Right Wall", new Vector3(8f, 3f, 0f), new Vector3(1f, 6f, 16f), gray, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Stronghold Front Left", new Vector3(-5.5f, 3f, -8f), new Vector3(5f, 6f, 1f), gray, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Stronghold Front Right", new Vector3(5.5f, 3f, -8f), new Vector3(5f, 6f, 1f), gray, true);
+        return group;
+    }
+
+    private GameObject CreateCitadel(Transform root, Vector3 position, bool golden)
+    {
+        GameObject group = NewEmpireGroup(root, golden ? "Golden Ranch Citadel" : "Ranch Citadel", position);
+        Material citadelMaterial = golden ? gold : black;
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Citadel Main Tower", new Vector3(0f, 8f, 0f), new Vector3(10f, 16f, 10f), citadelMaterial, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cube, "Citadel Crown", new Vector3(0f, 16.5f, 0f), new Vector3(13f, 1f, 13f), golden ? white : gray, true);
+        CreatePrimitive(group.transform, PrimitiveType.Cylinder, "Citadel Beacon", new Vector3(0f, 21f, 0f), new Vector3(1.2f, 4f, 1.2f), golden ? ranch : gold, true);
+        return group;
+    }
+
+    private GameObject NewEmpireGroup(Transform root, string groupName, Vector3 position)
+    {
+        GameObject group = new GameObject(groupName);
+        group.transform.SetParent(root, false);
+        group.transform.localPosition = position;
+        return group;
     }
 
     private Transform CreateCJArena(
@@ -270,112 +529,84 @@ public class RanchWorldBuilder : MonoBehaviour
     {
         Transform root = new GameObject("CJ Final Boss Arena").transform;
         root.SetParent(parent);
-        root.position = new Vector3(8f, 0f, 22f);
+        root.position = new Vector3(150f, 0f, 110f);
 
-        CreatePrimitive(
-            root,
-            PrimitiveType.Cube,
-            "CJ Arena Floor",
-            new Vector3(0f, -0.25f, 0f),
-            new Vector3(18f, 0.5f, 20f),
-            gray,
-            true
-        );
+        CreatePrimitive(root, PrimitiveType.Cube, "CJ Arena Solid Floor", new Vector3(0f, -1f, 0f), new Vector3(32f, 2f, 32f), gray, true);
+        CreatePrimitive(root, PrimitiveType.Cube, "CJ Arena Safety Foundation", new Vector3(0f, -4.5f, 0f), new Vector3(38f, 5f, 38f), black, true);
+        CreatePrimitive(root, PrimitiveType.Cube, "CJ Arena Left Wall", new Vector3(-16f, 3f, 0f), new Vector3(1f, 6f, 32f), black, true);
+        CreatePrimitive(root, PrimitiveType.Cube, "CJ Arena Right Wall", new Vector3(16f, 3f, 0f), new Vector3(1f, 6f, 32f), black, true);
+        CreatePrimitive(root, PrimitiveType.Cube, "CJ Arena Back Wall", new Vector3(0f, 3f, 16f), new Vector3(32f, 6f, 1f), black, true);
+        CreatePrimitive(root, PrimitiveType.Cube, "CJ Arena Front Wall", new Vector3(0f, 3f, -16f), new Vector3(32f, 6f, 1f), black, true);
 
-        CreatePrimitive(
-            root,
-            PrimitiveType.Cube,
-            "CJ Arena Left Wall",
-            new Vector3(-9f, 2.5f, 0f),
-            new Vector3(0.6f, 5f, 20f),
-            black,
-            true
-        );
+        for (int i = 0; i < 4; i++)
+        {
+            float x = i < 2 ? -12f : 12f;
+            float z = i % 2 == 0 ? -12f : 12f;
+            CreatePrimitive(root, PrimitiveType.Cylinder, "CJ Arena Pillar " + i, new Vector3(x, 3f, z), new Vector3(1.2f, 3f, 1.2f), gold, true);
+        }
 
-        CreatePrimitive(
-            root,
-            PrimitiveType.Cube,
-            "CJ Arena Right Wall",
-            new Vector3(9f, 2.5f, 0f),
-            new Vector3(0.6f, 5f, 20f),
-            black,
-            true
-        );
+        Transform playerMarker = new GameObject("CJ Arena Player Start").transform;
+        playerMarker.SetParent(root, false);
+        playerMarker.localPosition = new Vector3(0f, 1.1f, -10f);
+        playerMarker.localRotation = Quaternion.identity;
 
-        CreatePrimitive(
-            root,
-            PrimitiveType.Cube,
-            "CJ Arena Back Wall",
-            new Vector3(0f, 2.5f, 10f),
-            new Vector3(18f, 5f, 0.6f),
-            black,
-            true
-        );
+        Transform bossMarker = new GameObject("CJ Arena Boss Spawn").transform;
+        bossMarker.SetParent(root, false);
+        bossMarker.localPosition = new Vector3(0f, 1f, 9f);
+        bossMarker.localRotation = Quaternion.Euler(0f, 180f, 0f);
 
-        CreatePrimitive(
-            root,
-            PrimitiveType.Cylinder,
-            "CJ Left Golden Pillar",
-            new Vector3(-6.5f, 3f, 7f),
-            new Vector3(0.8f, 3f, 0.8f),
-            gold,
-            true
-        );
+        CreateLabel(root, "CJ FINAL BOSS ARENA", new Vector3(0f, 9f, 0f), false).color = Color.white;
 
-        CreatePrimitive(
-            root,
-            PrimitiveType.Cylinder,
-            "CJ Right Golden Pillar",
-            new Vector3(6.5f, 3f, 7f),
-            new Vector3(0.8f, 3f, 0.8f),
-            gold,
-            true
-        );
-
-        CreatePrimitive(
-            root,
-            PrimitiveType.Cube,
-            "CJ Ranchenator Platform",
-            new Vector3(0f, 0.25f, 5f),
-            new Vector3(6f, 0.5f, 5f),
-            red,
-            true
-        );
-
-        GameObject playerMarker = new GameObject("CJ Arena Player Start");
-        playerMarker.transform.SetParent(root, false);
-        playerMarker.transform.localPosition = new Vector3(0f, 1.1f, -7f);
-        playerMarker.transform.localRotation = Quaternion.identity;
-        playerStart = playerMarker.transform;
-
-        GameObject bossMarker = new GameObject("CJ Arena Boss Spawn");
-        bossMarker.transform.SetParent(root, false);
-        bossMarker.transform.localPosition = new Vector3(0f, 1.1f, 5f);
-        bossMarker.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-        bossSpawn = bossMarker.transform;
-
-        CreateLabel(
-            root,
-            "CJ FINAL BOSS ARENA\nCLEAR 30 WAVES TO ENTER",
-            new Vector3(0f, 6.5f, 7.5f),
-            false
-        ).color = new Color(1f, 0.75f, 0.1f);
-
+        playerStart = playerMarker;
+        bossSpawn = bossMarker;
         return root;
     }
 
     private void CreateDecorations(Transform parent)
     {
-        for (int i = 0; i < 14; i++)
+        Vector3[] positions =
         {
-            float angle = i * Mathf.PI * 2f / 14f;
-            Vector3 position = new Vector3(Mathf.Cos(angle) * 27f, 0f, Mathf.Sin(angle) * 27f);
-            GameObject root = new GameObject("Background Tree");
+            new Vector3(-35f, 0f, -35f), new Vector3(-35f, 0f, 35f),
+            new Vector3(25f, 0f, -38f), new Vector3(25f, 0f, 38f),
+            new Vector3(55f, 0f, -38f), new Vector3(55f, 0f, 38f),
+            new Vector3(100f, 0f, -38f), new Vector3(100f, 0f, 38f),
+            new Vector3(150f, 0f, -38f), new Vector3(170f, 0f, 38f)
+        };
+
+        for (int i = 0; i < positions.Length; i++)
+        {
+            GameObject root = new GameObject("Background Tree " + i);
             root.transform.SetParent(parent);
-            root.transform.position = position;
-            CreatePrimitive(root.transform, PrimitiveType.Cylinder, "Tree Trunk", new Vector3(0f, 1f, 0f), new Vector3(0.5f, 1.3f, 0.5f), brown, true);
-            CreatePrimitive(root.transform, PrimitiveType.Sphere, "Tree Crown", new Vector3(0f, 2.8f, 0f), Vector3.one * 2.2f, green, true);
+            root.transform.position = positions[i];
+            CreatePrimitive(root.transform, PrimitiveType.Cylinder, "Tree Trunk", new Vector3(0f, 1.2f, 0f), new Vector3(0.5f, 1.4f, 0.5f), brown, true);
+            CreatePrimitive(root.transform, PrimitiveType.Sphere, "Tree Crown", new Vector3(0f, 3.2f, 0f), Vector3.one * 2.2f, green, true);
         }
+    }
+
+    private GameObject CreatePrimitive(
+        Transform parent,
+        PrimitiveType type,
+        string objectName,
+        Vector3 localPosition,
+        Vector3 localScale,
+        Material material,
+        bool keepCollider)
+    {
+        GameObject piece = GameObject.CreatePrimitive(type);
+        piece.name = objectName;
+        piece.transform.SetParent(parent, false);
+        piece.transform.localPosition = localPosition;
+        piece.transform.localScale = localScale;
+        piece.GetComponent<Renderer>().material = material;
+
+        if (!keepCollider)
+        {
+            Collider collider = piece.GetComponent<Collider>();
+            if (collider != null)
+                Destroy(collider);
+        }
+
+        return piece;
     }
 
     private TextMesh CreateLabel(Transform target, string text, Vector3 offset, bool scaleHeight)
@@ -383,11 +614,12 @@ public class RanchWorldBuilder : MonoBehaviour
         GameObject labelObject = new GameObject(target.name + " Label");
         TextMesh mesh = labelObject.AddComponent<TextMesh>();
         mesh.text = text;
-        mesh.fontSize = 64;
-        mesh.characterSize = 0.075f;
+        mesh.fontSize = 58;
+        mesh.characterSize = 0.072f;
         mesh.anchor = TextAnchor.MiddleCenter;
         mesh.alignment = TextAlignment.Center;
         mesh.color = Color.black;
+
         RanchWorldLabel label = labelObject.AddComponent<RanchWorldLabel>();
         label.Initialize(target, offset, scaleHeight);
         return mesh;

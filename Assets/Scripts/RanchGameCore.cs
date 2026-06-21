@@ -12,14 +12,17 @@ public class RanchGameCore : MonoBehaviour
     public RanchTreeSystem Tree { get; private set; }
     public RanchHealthSystem Health { get; private set; }
     public RanchStaminaSystem Stamina { get; private set; }
+    public RanchEquipmentSystem Equipment { get; private set; }
     public RanchCombatSystem Combat { get; private set; }
     public RanchProgressionSystem Progression { get; private set; }
+    public RanchAreaSystem Areas { get; private set; }
     public RanchBossSystem Bosses { get; private set; }
     public RanchWaveSystem Waves { get; private set; }
     public RanchDrewSystem Drew { get; private set; }
     public RanchShopSystem Shop { get; private set; }
     public RanchCJSystem CJ { get; private set; }
     public RanchSaveSystem Save { get; private set; }
+    public RanchSettingsSystem Settings { get; private set; }
 
     public RanchPlayerController Player { get; private set; }
     public Transform RanchTreeTransform { get; private set; }
@@ -40,14 +43,28 @@ public class RanchGameCore : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
         Instance = this;
     }
 
-    public void Initialize(RanchInventory inventory, RanchBottleSystem bottles,
-        RanchUpgradeSystem upgrades, RanchTreeSystem tree, RanchHealthSystem health,
-        RanchStaminaSystem stamina, RanchCombatSystem combat, RanchProgressionSystem progression,
-        RanchBossSystem bosses, RanchWaveSystem waves, RanchDrewSystem drew,
-        RanchShopSystem shop, RanchCJSystem cj, RanchSaveSystem save)
+    public void Initialize(
+        RanchInventory inventory,
+        RanchBottleSystem bottles,
+        RanchUpgradeSystem upgrades,
+        RanchTreeSystem tree,
+        RanchHealthSystem health,
+        RanchStaminaSystem stamina,
+        RanchEquipmentSystem equipment,
+        RanchCombatSystem combat,
+        RanchProgressionSystem progression,
+        RanchAreaSystem areas,
+        RanchBossSystem bosses,
+        RanchWaveSystem waves,
+        RanchDrewSystem drew,
+        RanchShopSystem shop,
+        RanchCJSystem cj,
+        RanchSaveSystem save,
+        RanchSettingsSystem settings)
     {
         Inventory = inventory;
         Bottles = bottles;
@@ -55,14 +72,17 @@ public class RanchGameCore : MonoBehaviour
         Tree = tree;
         Health = health;
         Stamina = stamina;
+        Equipment = equipment;
         Combat = combat;
         Progression = progression;
+        Areas = areas;
         Bosses = bosses;
         Waves = waves;
         Drew = drew;
         Shop = shop;
         CJ = cj;
         Save = save;
+        Settings = settings;
     }
 
     public void RegisterWorld(RanchPlayerController player, Transform ranchTree)
@@ -71,6 +91,7 @@ public class RanchGameCore : MonoBehaviour
         RanchTreeTransform = ranchTree;
         Combat.RegisterPlayer(player);
         Progression.RegisterPlayer(player);
+        Settings.RegisterPlayer(player);
     }
 
     public void RegisterBottleSale(int bottleCount, int ranchUnitsSold)
@@ -97,7 +118,9 @@ public class RanchGameCore : MonoBehaviour
         CJHeat = Mathf.Max(0, cjHeat);
         GameWon = gameWon;
         CJ.CheckProgress();
-        if (GameWon && Player != null) Player.enabled = false;
+
+        if (GameWon && Player != null)
+            Player.enabled = false;
     }
 
     public void NotifyResourcesChanged()
@@ -115,12 +138,17 @@ public class RanchGameCore : MonoBehaviour
 
     public void WinGame()
     {
-        if (GameWon) return;
+        if (GameWon)
+            return;
+
         GameWon = true;
         Progression.AddExperience(1000f, "Defeated CJ");
         ShowMessage("You defeated CJ, the Ultimate Ranchenator.", 999f);
         GameWonEvent?.Invoke();
-        if (Player != null) Player.enabled = false;
+
+        if (Player != null)
+            Player.enabled = false;
+
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         Save.SaveGame(false);

@@ -5,7 +5,7 @@ using UnityEngine;
 [Serializable]
 public class RanchSaveData
 {
-    public int saveVersion = 3;
+    public int saveVersion = 4;
     public float rawRanch;
     public float money;
     public int[] bottleCounts = new int[RanchBottleSystem.TierCount];
@@ -41,6 +41,11 @@ public class RanchSaveData
     public float playerY;
     public float playerZ;
     public float playerRotationY;
+    public bool[] unlockedAreas = new bool[RanchAreaSystem.AreaCount];
+    public int activeEquipmentSlot = 1;
+    public int equippedWeapon;
+    public bool spearUnlocked;
+    public bool bowUnlocked;
 }
 
 public class RanchSaveSystem : MonoBehaviour
@@ -502,6 +507,21 @@ public class RanchSaveSystem : MonoBehaviour
         data.cjMilestoneIndex =
             core.CJ.MilestoneIndex;
 
+        data.unlockedAreas =
+            core.Areas.GetUnlockStateCopy();
+
+        data.activeEquipmentSlot =
+            core.Equipment.ActiveSlot;
+
+        data.equippedWeapon =
+            (int)core.Equipment.EquippedWeapon;
+
+        data.spearUnlocked =
+            core.Equipment.SpearUnlocked;
+
+        data.bowUnlocked =
+            core.Equipment.BowUnlocked;
+
         Vector3 position =
             core.Player.transform.position;
 
@@ -576,6 +596,30 @@ public class RanchSaveSystem : MonoBehaviour
             data.researchLevel,
             data.marketLevel
         );
+
+        if (data.saveVersion >= 4)
+        {
+            core.Areas.RestoreState(
+                data.unlockedAreas
+            );
+
+            core.Equipment.RestoreState(
+                data.activeEquipmentSlot,
+                data.equippedWeapon,
+                data.spearUnlocked,
+                data.bowUnlocked
+            );
+        }
+        else
+        {
+            bool[] migratedAreas = new bool[RanchAreaSystem.AreaCount];
+            migratedAreas[0] = true;
+            migratedAreas[1] = data.structureLevel >= 3;
+            migratedAreas[2] = data.structureLevel >= 6;
+            migratedAreas[3] = data.structureLevel >= 8;
+            core.Areas.RestoreState(migratedAreas);
+            core.Equipment.RestoreState(1, 0, false, false);
+        }
 
         core.CJ.RestoreState(
             data.cjHasWarned,
