@@ -406,12 +406,95 @@ public class RanchWorldBuilder : MonoBehaviour
 
     private GameObject CreateDrew(Transform parent)
     {
+        // This root is the actual Drew NPC object registered with RanchDrewSystem.
+        // RanchDrewSystem moves and hides/shows this root during gameplay.
         GameObject drew = new GameObject("Drew");
         drew.transform.SetParent(parent);
         drew.transform.position = new Vector3(-18f, 1.1f, -10f);
-        CreatePrimitive(drew.transform, PrimitiveType.Capsule, "Drew Body", Vector3.zero, Vector3.one, white, true);
-        CreatePrimitive(drew.transform, PrimitiveType.Cylinder, "Drew Hat", new Vector3(0f, 1.25f, 0f), new Vector3(0.85f, 0.12f, 0.85f), yellow, true);
-        CreateLabel(drew.transform, "DREW\nHelper NPC", new Vector3(0f, 2.7f, 0f), false);
+
+        // The prefab must exist at:
+        // Assets/Resources/Prefabs/DrewModel.prefab
+        GameObject drewPrefab = Resources.Load<GameObject>("Prefabs/DrewModel");
+
+        if (drewPrefab != null)
+        {
+            // Instantiate the visual model as a CHILD of the real Drew NPC root.
+            // This makes the custom model move wherever Drew moves.
+            GameObject drewModel = Instantiate(drewPrefab);
+            drewModel.name = "Drew Character Model";
+            drewModel.transform.SetParent(drew.transform, false);
+            drewModel.transform.localPosition = Vector3.zero;
+            drewModel.transform.localRotation = Quaternion.identity;
+
+            // Keep the scale saved inside DrewModel.prefab.
+            // Do not force the model back to Vector3.one here.
+
+            // Imported character files sometimes contain cameras, listeners, or lights.
+            // Disable them so they cannot take over the game camera or lighting.
+            Camera[] importedCameras = drewModel.GetComponentsInChildren<Camera>(true);
+            foreach (Camera importedCamera in importedCameras)
+            {
+                importedCamera.enabled = false;
+                Destroy(importedCamera);
+            }
+
+            AudioListener[] importedListeners = drewModel.GetComponentsInChildren<AudioListener>(true);
+            foreach (AudioListener importedListener in importedListeners)
+            {
+                importedListener.enabled = false;
+                Destroy(importedListener);
+            }
+
+            Light[] importedLights = drewModel.GetComponentsInChildren<Light>(true);
+            foreach (Light importedLight in importedLights)
+            {
+                importedLight.enabled = false;
+                Destroy(importedLight);
+            }
+
+            // Prevent any imported child from being mistaken for the gameplay camera.
+            Transform[] importedObjects = drewModel.GetComponentsInChildren<Transform>(true);
+            foreach (Transform importedObject in importedObjects)
+                importedObject.gameObject.tag = "Untagged";
+
+            Debug.Log("Drew custom model loaded from Resources/Prefabs/DrewModel.");
+        }
+        else
+        {
+            Debug.LogWarning(
+                "DrewModel.prefab was not found. Expected path: " +
+                "Assets/Resources/Prefabs/DrewModel.prefab"
+            );
+
+            // Fallback Drew appears if the custom prefab cannot be loaded.
+            CreatePrimitive(
+                drew.transform,
+                PrimitiveType.Capsule,
+                "Fallback Drew Body",
+                Vector3.zero,
+                Vector3.one,
+                white,
+                true
+            );
+
+            CreatePrimitive(
+                drew.transform,
+                PrimitiveType.Cylinder,
+                "Fallback Drew Hat",
+                new Vector3(0f, 1.25f, 0f),
+                new Vector3(0.85f, 0.12f, 0.85f),
+                yellow,
+                true
+            );
+        }
+
+        CreateLabel(
+            drew.transform,
+            "DREW\nHelper NPC",
+            new Vector3(0f, 2.7f, 0f),
+            false
+        );
+
         return drew;
     }
 
