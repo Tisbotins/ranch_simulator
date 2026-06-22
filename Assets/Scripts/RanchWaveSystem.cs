@@ -16,8 +16,8 @@ public class RanchWaveSystem : MonoBehaviour
     public int CurrentWave { get; private set; }
     public int HighestWaveCleared { get; private set; }
     public WaveState CurrentState { get; private set; }
-    public float FirstWaveDelay = 18f;
-    public float IntermissionDuration = 30f;
+    public float FirstWaveDelay = 120f;
+    public float IntermissionDuration = 120f;
     public float EnemySpawnDelay = 0.75f;
     public int MaximumEnemiesPerWave = 30;
 
@@ -79,7 +79,7 @@ public class RanchWaveSystem : MonoBehaviour
             {
                 BeginIntermission(FirstWaveDelay);
                 core.ShowMessage(
-                    $"The Ranch Tree attracted Raiders. Wave {CurrentWave + 1} begins in {Mathf.CeilToInt(FirstWaveDelay)} seconds."
+                    $"The Ranch Tree attracted hostile creatures. Wave {CurrentWave + 1} begins in {Mathf.CeilToInt(FirstWaveDelay)} seconds."
                 );
             }
 
@@ -122,7 +122,7 @@ public class RanchWaveSystem : MonoBehaviour
         if (nearest != null)
             nearest.TakeDamage(damage);
         else if (showMiss)
-            core.ShowMessage("No Ranch Raider is within sword range.");
+            core.ShowMessage("No enemy is within weapon range.");
     }
 
     public void DamageNearestFromDefense(float damage, float range)
@@ -172,7 +172,7 @@ public class RanchWaveSystem : MonoBehaviour
         if (core.Bosses.BossAlive)
             return $"BOSS: {core.Bosses.CurrentBossName} — {EnemiesRemaining} ENEMIES";
 
-        return $"WAVE {CurrentWave} — {EnemiesRemaining} RAIDERS REMAINING";
+        return $"WAVE {CurrentWave} — {EnemiesRemaining} ENEMIES REMAINING";
     }
 
     public string GetStatusText()
@@ -292,7 +292,7 @@ public class RanchWaveSystem : MonoBehaviour
 
         string startText = core.Bosses.IsBossWave(CurrentWave)
             ? $"BOSS WAVE {CurrentWave} — {core.Bosses.GetBossName(CurrentWave)} is approaching!"
-            : $"WAVE {CurrentWave} STARTED — {enemiesInWave} Raiders incoming. Types: {GetPreview(CurrentWave)}";
+            : $"WAVE {CurrentWave} STARTED — {enemiesInWave} enemies incoming. Types: {GetPreview(CurrentWave)}";
 
         core.ShowMessage(startText, 7f);
     }
@@ -353,10 +353,19 @@ public class RanchWaveSystem : MonoBehaviour
         Vector3 position = tree.position +
             new Vector3(Mathf.Cos(angle) * radius, 1f, Mathf.Sin(angle) * radius);
 
+        RanchEnemy.EnemyArchetype archetype = bossSpawn
+            ? RanchEnemy.EnemyArchetype.Raider
+            : ChooseArchetype(CurrentWave, index);
+
+        if (archetype == RanchEnemy.EnemyArchetype.RanchBat)
+            position.y = Random.Range(3.4f, 4.8f);
+        else if (archetype == RanchEnemy.EnemyArchetype.RanchRotCrawler)
+            position.y = 0.65f;
+
         GameObject enemyObject = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         enemyObject.name = bossSpawn
             ? core.Bosses.GetBossName(CurrentWave)
-            : $"Wave {CurrentWave} {RanchEnemy.GetEnemyName(tier)} {serial}";
+            : $"Wave {CurrentWave} {RanchEnemy.GetArchetypeName(archetype, tier)} {serial}";
         enemyObject.transform.position = position;
 
         if (container != null)
@@ -366,11 +375,19 @@ public class RanchWaveSystem : MonoBehaviour
             RanchWorldBuilder.CreateRuntimeMaterial(
                 bossSpawn
                     ? new Color(0.85f, 0.08f, 0.08f)
-                    : GetTierColor(tier)
+                    : GetArchetypeColor(archetype, tier)
             );
 
         RanchEnemy enemy = enemyObject.AddComponent<RanchEnemy>();
-        enemy.Initialize(core, this, player, tier, serial, CurrentWave);
+        enemy.Initialize(
+            core,
+            this,
+            player,
+            tier,
+            serial,
+            CurrentWave,
+            archetype
+        );
         activeEnemies.Add(enemy);
 
         if (bossSpawn)
@@ -452,6 +469,22 @@ public class RanchWaveSystem : MonoBehaviour
         CurrentState = WaveState.AwaitingCJ;
     }
 
+    private RanchEnemy.EnemyArchetype ChooseArchetype(int wave, int index)
+    {
+        // Bats begin appearing early; Crawlers join the mix later.
+        // The deterministic pattern guarantees both types appear instead
+        // of leaving the entire wave composition to random chance.
+        int pattern = Mathf.Abs(index + wave * 2) % 7;
+
+        if (wave >= 7 && (pattern == 0 || Random.value < 0.12f))
+            return RanchEnemy.EnemyArchetype.RanchRotCrawler;
+
+        if (wave >= 4 && (pattern == 3 || Random.value < 0.14f))
+            return RanchEnemy.EnemyArchetype.RanchBat;
+
+        return RanchEnemy.EnemyArchetype.Raider;
+    }
+
     private int ChooseTier(int wave, int index)
     {
         int maximum = Mathf.Min(
@@ -470,9 +503,20 @@ public class RanchWaveSystem : MonoBehaviour
         );
         int minimum = Mathf.Max(0, maximum - 1);
 
-        return minimum == maximum
-            ? RanchEnemy.GetEnemyName(maximum)
-            : $"{RanchEnemy.GetEnemyName(minimum)} / {RanchEnemy.GetEnemyName(maximum)}";
+        List<string> types = new List<string>();
+
+        if (minimum == maximum)
+            types.Add(RanchEnemy.GetEnemyName(maximum));
+        else
+            types.Add($"{RanchEnemy.GetEnemyName(minimum)} / {RanchEnemy.GetEnemyName(maximum)}");
+
+        if (wave >= 4)
+            types.Add("Ranch Bats");
+
+        if (wave >= 7)
+            types.Add("Ranch Rot Crawlers");
+
+        return string.Join(" / ", types);
     }
 
     public void PrepareForLoad()
@@ -501,7 +545,7 @@ public class RanchWaveSystem : MonoBehaviour
         if (HighestWaveCleared >= RanchCJSystem.RequiredWaves)
             CurrentState = WaveState.AwaitingCJ;
         else if (core.Tree.Stage >= 1)
-            BeginIntermission(8f);
+            BeginIntermission(IntermissionDuration);
         else
             CurrentState = WaveState.WaitingForTree;
     }
@@ -510,6 +554,23 @@ public class RanchWaveSystem : MonoBehaviour
     {
         int total = Mathf.CeilToInt(Mathf.Max(0f, seconds));
         return $"{total / 60:00}:{total % 60:00}";
+    }
+
+    private static Color GetArchetypeColor(
+        RanchEnemy.EnemyArchetype archetype,
+        int tier)
+    {
+        switch (archetype)
+        {
+            case RanchEnemy.EnemyArchetype.RanchBat:
+                return new Color(0.34f, 0.10f, 0.48f);
+
+            case RanchEnemy.EnemyArchetype.RanchRotCrawler:
+                return new Color(0.18f, 0.46f, 0.12f);
+
+            default:
+                return GetTierColor(tier);
+        }
     }
 
     private static Color GetTierColor(int tier)

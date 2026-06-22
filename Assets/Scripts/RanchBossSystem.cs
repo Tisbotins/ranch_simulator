@@ -30,6 +30,10 @@ public class RanchBossSystem : MonoBehaviour
 
     public string GetBossName(int wave)
     {
+        // Wave 15 is a dedicated boss round.
+        if (wave == 15)
+            return "The Ranch Jockey";
+
         int index = Mathf.Max(0, wave / 5 - 1) % 5;
         switch (index)
         {
