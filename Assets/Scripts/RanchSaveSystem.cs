@@ -5,8 +5,9 @@ using UnityEngine;
 [Serializable]
 public class RanchSaveData
 {
-    public int saveVersion = 4;
+    public int saveVersion = 5;
     public float rawRanch;
+    public float totalRanchCollected;
     public float money;
     public int[] bottleCounts = new int[RanchBottleSystem.TierCount];
     public int unlockedBottleTier;
@@ -417,6 +418,9 @@ public class RanchSaveSystem : MonoBehaviour
         data.rawRanch =
             core.Inventory.RawRanch;
 
+        data.totalRanchCollected =
+            core.Inventory.TotalRanchCollected;
+
         data.money =
             core.Inventory.Money;
 
@@ -546,8 +550,14 @@ public class RanchSaveSystem : MonoBehaviour
         core.Waves.PrepareForLoad();
         core.Bosses.ResetBossState();
 
+        float restoredTotalRanch =
+            data.saveVersion >= 5
+                ? data.totalRanchCollected
+                : GetMigratedTotalRanch(data);
+
         core.Inventory.RestoreState(
             data.rawRanch,
+            restoredTotalRanch,
             data.money,
             data.bottleCounts
         );
@@ -647,6 +657,26 @@ public class RanchSaveSystem : MonoBehaviour
         );
 
         core.NotifyResourcesChanged();
+    }
+
+    private float GetMigratedTotalRanch(
+        RanchSaveData data)
+    {
+        float migrated = Mathf.Max(
+            data.rawRanch,
+            data.lifetimeRanchExtracted
+        );
+
+        if (data.unlockedAreas != null)
+        {
+            for (int i = 1; i < RanchAreaSystem.AreaCount && i < data.unlockedAreas.Length; i++)
+            {
+                if (data.unlockedAreas[i])
+                    migrated = Mathf.Max(migrated, core.Areas.GetUnlockRequirement(i));
+            }
+        }
+
+        return migrated;
     }
 
     private void ReportSaveFailure(

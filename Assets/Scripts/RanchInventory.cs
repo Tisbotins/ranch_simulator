@@ -4,6 +4,7 @@ using UnityEngine;
 public class RanchInventory : MonoBehaviour
 {
     public float RawRanch { get; private set; }
+    public float TotalRanchCollected { get; private set; }
     public float Money { get; private set; }
 
     private readonly int[] bottleCounts = new int[RanchBottleSystem.TierCount];
@@ -17,6 +18,7 @@ public class RanchInventory : MonoBehaviour
     {
         if (amount <= 0f) return;
         RawRanch += amount;
+        TotalRanchCollected += amount;
         Changed();
     }
 
@@ -67,9 +69,14 @@ public class RanchInventory : MonoBehaviour
         return copy;
     }
 
-    public void RestoreState(float rawRanch, float money, int[] savedBottleCounts)
+    public void RestoreState(
+        float rawRanch,
+        float totalRanchCollected,
+        float money,
+        int[] savedBottleCounts)
     {
         RawRanch = Mathf.Max(0f, rawRanch);
+        TotalRanchCollected = Mathf.Max(RawRanch, totalRanchCollected);
         Money = Mathf.Max(0f, money);
         for (int i = 0; i < bottleCounts.Length; i++)
             bottleCounts[i] = savedBottleCounts != null && i < savedBottleCounts.Length

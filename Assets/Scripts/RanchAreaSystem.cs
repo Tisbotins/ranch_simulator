@@ -14,7 +14,7 @@ public class RanchAreaSystem : MonoBehaviour
         "Citadel Grounds"
     };
 
-    private readonly float[] unlockCosts =
+    private readonly float[] unlockRequirements =
     {
         0f,
         500f,
@@ -36,6 +36,15 @@ public class RanchAreaSystem : MonoBehaviour
     public void Initialize(RanchGameCore gameCore)
     {
         core = gameCore;
+
+        if (core != null && core.Inventory != null)
+            core.Inventory.InventoryChanged += HandleInventoryChanged;
+    }
+
+    private void OnDestroy()
+    {
+        if (core != null && core.Inventory != null)
+            core.Inventory.InventoryChanged -= HandleInventoryChanged;
     }
 
     public string GetAreaName(int areaIndex)
@@ -45,12 +54,24 @@ public class RanchAreaSystem : MonoBehaviour
 
     public float GetUnlockCost(int areaIndex)
     {
-        return ValidArea(areaIndex) ? unlockCosts[areaIndex] : -1f;
+        return GetUnlockRequirement(areaIndex);
+    }
+
+    public float GetUnlockRequirement(int areaIndex)
+    {
+        return ValidArea(areaIndex) ? unlockRequirements[areaIndex] : -1f;
     }
 
     public bool IsUnlocked(int areaIndex)
     {
         return ValidArea(areaIndex) && unlocked[areaIndex];
+    }
+
+    public float GetTotalRanchProgress()
+    {
+        return core != null && core.Inventory != null
+            ? core.Inventory.TotalRanchCollected
+            : 0f;
     }
 
     public void RegisterGate(RanchAreaGate gate)
@@ -79,11 +100,16 @@ public class RanchAreaSystem : MonoBehaviour
             return false;
         }
 
-        float cost = unlockCosts[areaIndex];
-        if (!core.Inventory.TrySpendRawRanch(cost))
+        float requirement = unlockRequirements[areaIndex];
+        float collected = GetTotalRanchProgress();
+
+        if (collected + 0.0001f < requirement)
         {
             core.ShowMessage(
-                "Need " + cost.ToString("F0") + " raw Ranch to unlock " + GetAreaName(areaIndex) + ".",
+                "Collect " + requirement.ToString("F0") +
+                " total Ranch to unlock " + GetAreaName(areaIndex) +
+                ". Progress: " + collected.ToString("F0") +
+                "/" + requirement.ToString("F0") + ".",
                 7f
             );
             return false;
@@ -93,7 +119,11 @@ public class RanchAreaSystem : MonoBehaviour
         RefreshGates();
         core.Progression.AddExperience(120f * areaIndex, "Area unlocked");
         core.Save.RequestSave();
-        core.ShowMessage(GetAreaName(areaIndex) + " unlocked. The white barrier has opened.", 8f);
+        core.ShowMessage(
+            GetAreaName(areaIndex) +
+            " unlocked. No Ranch was spent—the gate uses lifetime collection progress.",
+            8f
+        );
         return true;
     }
 
@@ -145,15 +175,29 @@ public class RanchAreaSystem : MonoBehaviour
     public string GetStatusSummary()
     {
         StringBuilder text = new StringBuilder();
+        float collected = GetTotalRanchProgress();
+
         for (int i = 0; i < AreaCount; i++)
         {
             text.Append(areaNames[i]);
             text.Append(": ");
-            text.Append(unlocked[i] ? "OPEN" : unlockCosts[i].ToString("F0") + " Ranch");
+            text.Append(
+                unlocked[i]
+                    ? "OPEN"
+                    : collected.ToString("F0") +
+                      "/" + unlockRequirements[i].ToString("F0") +
+                      " Total Ranch"
+            );
+
             if (i < AreaCount - 1)
                 text.AppendLine();
         }
         return text.ToString();
+    }
+
+    private void HandleInventoryChanged()
+    {
+        RefreshGates();
     }
 
     private void RefreshGates()

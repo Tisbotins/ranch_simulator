@@ -18,12 +18,24 @@ public class RanchAreaGate : RanchInteractable
             if (core.Areas.IsUnlocked(AreaIndex))
                 return core.Areas.GetAreaName(AreaIndex) + " — OPEN";
 
+            float requirement = core.Areas.GetUnlockRequirement(AreaIndex);
+            float collected = core.Areas.GetTotalRanchProgress();
+
+            if (collected + 0.0001f >= requirement)
+            {
+                return
+                    "Press E: Open " +
+                    core.Areas.GetAreaName(AreaIndex) +
+                    " — total Ranch requirement reached";
+            }
+
             return
-                "Press E: Unlock " +
-                core.Areas.GetAreaName(AreaIndex) +
+                "Collect total Ranch: " +
+                collected.ToString("F0") +
+                "/" +
+                requirement.ToString("F0") +
                 " for " +
-                core.Areas.GetUnlockCost(AreaIndex).ToString("F0") +
-                " raw Ranch";
+                core.Areas.GetAreaName(AreaIndex);
         }
     }
 
@@ -62,14 +74,35 @@ public class RanchAreaGate : RanchInteractable
 
         if (label != null)
         {
-            label.text = open
-                ? core.Areas.GetAreaName(AreaIndex).ToUpperInvariant() + "\nOPEN"
-                : core.Areas.GetAreaName(AreaIndex).ToUpperInvariant() +
-                  "\nLOCKED — " +
-                  core.Areas.GetUnlockCost(AreaIndex).ToString("F0") +
-                  " RAW RANCH";
+            float requirement = core.Areas.GetUnlockRequirement(AreaIndex);
+            float collected = core.Areas.GetTotalRanchProgress();
+            bool ready = collected + 0.0001f >= requirement;
 
-            label.color = open ? new Color(0.45f, 1f, 0.55f) : Color.white;
+            if (open)
+            {
+                label.text =
+                    core.Areas.GetAreaName(AreaIndex).ToUpperInvariant() +
+                    "\nOPEN";
+                label.color = new Color(0.45f, 1f, 0.55f);
+            }
+            else if (ready)
+            {
+                label.text =
+                    core.Areas.GetAreaName(AreaIndex).ToUpperInvariant() +
+                    "\nREADY — PRESS E" +
+                    "\n" + requirement.ToString("F0") + " TOTAL RANCH COLLECTED";
+                label.color = new Color(1f, 0.9f, 0.35f);
+            }
+            else
+            {
+                label.text =
+                    core.Areas.GetAreaName(AreaIndex).ToUpperInvariant() +
+                    "\nLOCKED" +
+                    "\n" + collected.ToString("F0") +
+                    "/" + requirement.ToString("F0") +
+                    " TOTAL RANCH";
+                label.color = Color.white;
+            }
         }
     }
 }

@@ -90,6 +90,7 @@ public class RanchUI : MonoBehaviour
         int tier = core.Bottles.SelectedTier;
         StringBuilder text = new StringBuilder();
         text.AppendLine("Raw Ranch: " + core.Inventory.RawRanch.ToString("F1"));
+        text.AppendLine("Total Ranch: " + core.Inventory.TotalRanchCollected.ToString("F0"));
         text.AppendLine("Money: $" + core.Inventory.Money.ToString("F0"));
         text.AppendLine("Bottle: " + core.Bottles.GetTierName(tier));
         text.AppendLine("Stored: " + core.Inventory.GetBottleCount(tier));
@@ -102,7 +103,7 @@ public class RanchUI : MonoBehaviour
         text.AppendLine("CJ Heat: " + core.CJHeat + " — " + core.CJ.GetHeatStatus());
         text.AppendLine("Save: " + core.Save.LastSaveStatus);
 
-        DrawPanel(new Rect(20f, 20f, 390f, 390f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
+        DrawPanel(new Rect(20f, 20f, 390f, 420f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
     }
 
     private void DrawHealthAndStamina()
