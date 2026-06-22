@@ -9,32 +9,31 @@ public enum RanchWeaponType
 
 public class RanchEquipmentSystem : MonoBehaviour
 {
-    public const int SlotCount = 4;
+    public const int SlotCount = 3;
 
     public int ActiveSlot { get; private set; } = 1;
     public RanchWeaponType EquippedWeapon { get; private set; } = RanchWeaponType.Sword;
     public bool SpearUnlocked { get; private set; }
     public bool BowUnlocked { get; private set; }
 
+    public RanchClassType CurrentClass =>
+        core != null && core.Classes != null
+            ? core.Classes.CurrentClass
+            : RanchClassType.Sword;
+
     public bool ExtractorSlotActive => ActiveSlot == 0;
-    public bool WeaponSlotActive => ActiveSlot == 1;
+    public bool WeaponSlotActive => ActiveSlot == 1 && CurrentClass != RanchClassType.Summoner;
     public bool TrapSlotActive => ActiveSlot == 2;
-    public bool WandSlotActive => ActiveSlot == 3;
+    public bool WandSlotActive => ActiveSlot == 1 && CurrentClass == RanchClassType.Summoner;
     public bool ExtraSlotActive => TrapSlotActive;
 
     public string CurrentWeaponName
     {
         get
         {
-            switch (EquippedWeapon)
-            {
-                case RanchWeaponType.Spear:
-                    return "Ranch Spear";
-                case RanchWeaponType.Bow:
-                    return "Ranch Bow";
-                default:
-                    return core == null ? "Ranch Sword" : core.Shop.CurrentSwordName;
-            }
+            return core == null || core.Shop == null
+                ? GetBaseWeaponName(CurrentClass)
+                : core.Shop.GetCurrentClassWeaponName();
         }
     }
 
@@ -42,14 +41,12 @@ public class RanchEquipmentSystem : MonoBehaviour
     {
         get
         {
-            switch (EquippedWeapon)
+            switch (CurrentClass)
             {
-                case RanchWeaponType.Spear:
-                    return 0.92f;
-                case RanchWeaponType.Bow:
-                    return 0.82f;
-                default:
-                    return 1f;
+                case RanchClassType.Spear: return 0.96f;
+                case RanchClassType.Ranged: return 0.80f;
+                case RanchClassType.Summoner: return 0f;
+                default: return 1f;
             }
         }
     }
@@ -58,12 +55,12 @@ public class RanchEquipmentSystem : MonoBehaviour
     {
         get
         {
-            switch (EquippedWeapon)
+            switch (CurrentClass)
             {
-                case RanchWeaponType.Spear:
-                    return 5.7f;
-                case RanchWeaponType.Bow:
-                    return 28f;
+                case RanchClassType.Spear:
+                    return 5.7f * (core == null ? 1f : core.Progression.SpearRangeMultiplier * core.Shop.SpearRangeMultiplier);
+                case RanchClassType.Ranged:
+                    return 34f;
                 default:
                     return 3.6f;
             }
@@ -74,22 +71,22 @@ public class RanchEquipmentSystem : MonoBehaviour
     {
         get
         {
-            switch (EquippedWeapon)
+            switch (CurrentClass)
             {
-                case RanchWeaponType.Spear:
-                    return 6.8f;
-                case RanchWeaponType.Bow:
-                    return 36f;
+                case RanchClassType.Spear:
+                    return 6.8f * (core == null ? 1f : core.Progression.SpearRangeMultiplier * core.Shop.SpearRangeMultiplier);
+                case RanchClassType.Ranged:
+                    return 42f;
                 default:
                     return 4.25f;
             }
         }
     }
 
-    public float LightStaminaMultiplier => EquippedWeapon == RanchWeaponType.Bow ? 1.25f : 1f;
-    public float HeavyStaminaMultiplier => EquippedWeapon == RanchWeaponType.Spear ? 1.12f : 1f;
-    public bool CanBlock => EquippedWeapon != RanchWeaponType.Bow;
-    public bool IsRanged => EquippedWeapon == RanchWeaponType.Bow;
+    public float LightStaminaMultiplier => CurrentClass == RanchClassType.Ranged ? 1.3f : 1f;
+    public float HeavyStaminaMultiplier => CurrentClass == RanchClassType.Spear ? 1.12f : 1f;
+    public bool CanBlock => CurrentClass == RanchClassType.Sword || CurrentClass == RanchClassType.Spear;
+    public bool IsRanged => CurrentClass == RanchClassType.Ranged;
 
     private RanchGameCore core;
     private Transform extractorVisual;
@@ -103,11 +100,7 @@ public class RanchEquipmentSystem : MonoBehaviour
         core = gameCore;
     }
 
-    public void RegisterVisuals(
-        Transform extractor,
-        Transform sword,
-        Transform spear,
-        Transform bow)
+    public void RegisterVisuals(Transform extractor, Transform sword, Transform spear, Transform bow)
     {
         extractorVisual = extractor;
         swordVisual = sword;
@@ -123,18 +116,19 @@ public class RanchEquipmentSystem : MonoBehaviour
             case 0:
                 return core == null ? "Extractor" : core.Upgrades.CurrentToolName;
             case 1:
-                return CurrentWeaponName;
-            case 2:
-                return core == null || core.Deployables == null
-                    ? "Ranch Trap"
-                    : "Ranch Trap x" + core.Deployables.TrapCount;
-            case 3:
+                if (CurrentClass != RanchClassType.Summoner)
+                    return CurrentWeaponName;
+
                 if (core == null || core.Deployables == null)
                     return "Delulu Wand";
 
                 return core.Deployables.DeluluWandUnlocked
-                    ? "Delulu Wand [" + core.Deployables.ActiveDeluluCount + " active]"
+                    ? CurrentWeaponName + " [" + core.Deployables.ActiveDeluluCount + " active]"
                     : "Delulu Wand [LOCKED]";
+            case 2:
+                return core == null || core.Deployables == null
+                    ? "Ranch Trap"
+                    : "Ranch Trap x" + core.Deployables.TrapCount;
             default:
                 return "Unknown Slot";
         }
@@ -143,6 +137,7 @@ public class RanchEquipmentSystem : MonoBehaviour
     public void SelectSlot(int slot)
     {
         slot = Mathf.Clamp(slot, 0, SlotCount - 1);
+
         ActiveSlot = slot;
         extractionOverride = false;
         RefreshVisuals();
@@ -163,31 +158,44 @@ public class RanchEquipmentSystem : MonoBehaviour
         RefreshVisuals();
     }
 
+    public void ApplyClass(RanchClassType classType, bool selectClassSlot)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear:
+                SpearUnlocked = true;
+                EquippedWeapon = RanchWeaponType.Spear;
+                if (selectClassSlot) ActiveSlot = 1;
+                break;
+            case RanchClassType.Ranged:
+                BowUnlocked = true;
+                EquippedWeapon = RanchWeaponType.Bow;
+                if (selectClassSlot) ActiveSlot = 1;
+                break;
+            case RanchClassType.Summoner:
+                if (selectClassSlot) ActiveSlot = 1;
+                break;
+            default:
+                EquippedWeapon = RanchWeaponType.Sword;
+                if (selectClassSlot) ActiveSlot = 1;
+                break;
+        }
+
+        extractionOverride = false;
+        RefreshVisuals();
+    }
+
     public bool IsWeaponUnlocked(RanchWeaponType weapon)
     {
         switch (weapon)
         {
-            case RanchWeaponType.Spear:
-                return SpearUnlocked;
-            case RanchWeaponType.Bow:
-                return BowUnlocked;
-            default:
-                return true;
+            case RanchWeaponType.Spear: return SpearUnlocked;
+            case RanchWeaponType.Bow: return BowUnlocked;
+            default: return true;
         }
     }
 
-    public float GetWeaponUnlockCost(RanchWeaponType weapon)
-    {
-        switch (weapon)
-        {
-            case RanchWeaponType.Spear:
-                return 3000f;
-            case RanchWeaponType.Bow:
-                return 6500f;
-            default:
-                return 0f;
-        }
-    }
+    public float GetWeaponUnlockCost(RanchWeaponType weapon) => 0f;
 
     public string GetWeaponDescription(RanchWeaponType weapon)
     {
@@ -196,7 +204,7 @@ public class RanchEquipmentSystem : MonoBehaviour
             case RanchWeaponType.Spear:
                 return "Long melee reach, armor-piercing heavy thrusts, and strong knockback.";
             case RanchWeaponType.Bow:
-                return "Long-range attacks and powerful charged shots. The bow cannot block.";
+                return "Fires actual projectiles at long range. Lower damage and no blocking.";
             default:
                 return "Balanced close-range weapon with fast three-hit combos and reliable blocking.";
         }
@@ -204,51 +212,36 @@ public class RanchEquipmentSystem : MonoBehaviour
 
     public void BuyOrEquipWeapon(RanchWeaponType weapon)
     {
-        if (!IsWeaponUnlocked(weapon))
-        {
-            float cost = GetWeaponUnlockCost(weapon);
+        if (core == null || core.Classes == null)
+            return;
 
-            if (!core.Inventory.TrySpendMoney(cost))
-            {
-                core.ShowMessage("Need $" + cost.ToString("F0") + " to unlock the " + GetDisplayName(weapon) + ".");
-                return;
-            }
-
-            if (weapon == RanchWeaponType.Spear)
-                SpearUnlocked = true;
-            else if (weapon == RanchWeaponType.Bow)
-                BowUnlocked = true;
-
-            core.Progression.AddExperience(100f, "Weapon unlocked");
-            core.ShowMessage(GetDisplayName(weapon) + " unlocked and equipped.", 6f);
-        }
-        else
-        {
-            core.ShowMessage(GetDisplayName(weapon) + " equipped in Slot 2.");
-        }
-
-        EquippedWeapon = weapon;
-        ActiveSlot = 1;
-        extractionOverride = false;
-        RefreshVisuals();
-        core.Save.RequestSave();
+        RanchClassType classType = RanchClassType.Sword;
+        if (weapon == RanchWeaponType.Spear) classType = RanchClassType.Spear;
+        if (weapon == RanchWeaponType.Bow) classType = RanchClassType.Ranged;
+        core.Classes.ChangeClass(classType);
     }
 
-    public void RestoreState(
-        int activeSlot,
-        int equippedWeapon,
-        bool spearUnlocked,
-        bool bowUnlocked)
+    public void RestoreState(int activeSlot, int equippedWeapon, bool spearUnlocked, bool bowUnlocked)
     {
         SpearUnlocked = spearUnlocked;
         BowUnlocked = bowUnlocked;
 
-        RanchWeaponType restoredWeapon = (RanchWeaponType)Mathf.Clamp(equippedWeapon, 0, 2);
-        if (!IsWeaponUnlocked(restoredWeapon))
-            restoredWeapon = RanchWeaponType.Sword;
+        // Version-7 saves may still contain the removed Slot 4 index.
+        // Move those saves to Slot 2, which now holds the Summoner wand.
+        if (activeSlot == 3)
+            activeSlot = 1;
 
-        EquippedWeapon = restoredWeapon;
         ActiveSlot = Mathf.Clamp(activeSlot, 0, SlotCount - 1);
+
+        if (core != null && core.Classes != null)
+        {
+            ApplyClass(core.Classes.CurrentClass, false);
+        }
+        else
+        {
+            EquippedWeapon = (RanchWeaponType)Mathf.Clamp(equippedWeapon, 0, 2);
+        }
+
         extractionOverride = false;
         RefreshVisuals();
     }
@@ -257,37 +250,32 @@ public class RanchEquipmentSystem : MonoBehaviour
     {
         switch (EquippedWeapon)
         {
-            case RanchWeaponType.Spear:
-                return spearVisual;
-            case RanchWeaponType.Bow:
-                return bowVisual;
-            default:
-                return swordVisual;
+            case RanchWeaponType.Spear: return spearVisual;
+            case RanchWeaponType.Bow: return bowVisual;
+            default: return swordVisual;
         }
     }
 
-    private string GetDisplayName(RanchWeaponType weapon)
+    private static string GetBaseWeaponName(RanchClassType classType)
     {
-        switch (weapon)
+        switch (classType)
         {
-            case RanchWeaponType.Spear:
-                return "Ranch Spear";
-            case RanchWeaponType.Bow:
-                return "Ranch Bow";
-            default:
-                return "Ranch Sword";
+            case RanchClassType.Spear: return "Ranch Spear";
+            case RanchClassType.Ranged: return "Ranch Bow";
+            case RanchClassType.Summoner: return "Delulu Wand";
+            default: return "Ranch Sword";
         }
     }
 
     private void RefreshVisuals()
     {
         bool showExtractor = extractionOverride || ActiveSlot == 0;
-        bool showWeapon = !extractionOverride && ActiveSlot == 1;
+        bool showWeapon = !extractionOverride && ActiveSlot == 1 && CurrentClass != RanchClassType.Summoner;
 
         SetVisible(extractorVisual, showExtractor);
-        SetVisible(swordVisual, showWeapon && EquippedWeapon == RanchWeaponType.Sword);
-        SetVisible(spearVisual, showWeapon && EquippedWeapon == RanchWeaponType.Spear);
-        SetVisible(bowVisual, showWeapon && EquippedWeapon == RanchWeaponType.Bow);
+        SetVisible(swordVisual, showWeapon && CurrentClass == RanchClassType.Sword);
+        SetVisible(spearVisual, showWeapon && CurrentClass == RanchClassType.Spear);
+        SetVisible(bowVisual, showWeapon && CurrentClass == RanchClassType.Ranged);
     }
 
     private static void SetVisible(Transform target, bool visible)

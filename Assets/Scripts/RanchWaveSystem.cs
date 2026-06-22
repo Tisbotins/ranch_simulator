@@ -309,7 +309,7 @@ public class RanchWaveSystem : MonoBehaviour
         core.Progression.AddExperience(xp, "Wave cleared");
         core.AddCJHeat(4 + CurrentWave);
 
-        lastReward = $"Last reward: ${money:F0}, {ranch:F0} Ranch, {xp:F0} XP.";
+        lastReward = $"Last reward: ${money:F0}, {ranch:F0} Ranch, {xp:F0} Ranch Knowledge.";
         core.Save.RequestSave();
         core.CJ.NotifyWaveCleared(CurrentWave);
 

@@ -96,6 +96,8 @@ public class RanchSettingsSystem : MonoBehaviour
         if ((Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.F1)) &&
             !core.Shop.IsOpen &&
             !core.Progression.IsOpen &&
+            (core.Classes == null || !core.Classes.IsOpen) &&
+            (core.Laboratory == null || !core.Laboratory.IsOpen) &&
             !core.GameWon &&
             !core.Health.IsDead)
         {
@@ -122,6 +124,8 @@ public class RanchSettingsSystem : MonoBehaviour
     public void OpenMenu()
     {
         if (IsOpen || core == null || core.Shop.IsOpen || core.Progression.IsOpen ||
+            (core.Classes != null && core.Classes.IsOpen) ||
+            (core.Laboratory != null && core.Laboratory.IsOpen) ||
             (titleScreen != null && titleScreen.IsOpen))
         {
             return;
@@ -312,23 +316,25 @@ public class RanchSettingsSystem : MonoBehaviour
             "WASD — Move\n" +
             "Mouse — Look\n" +
             "Left Control — Dodge\n\n" +
-            "FOUR-SLOT INVENTORY\n" +
+            "CLASS & EQUIPMENT\n" +
+            "E at Dr. Oakberry — Change class\n" +
             "1 — Extractor\n" +
-            "2 — Equipped weapon\n" +
-            "3 — Ranch Trap\n" +
-            "4 — Delulu Wand\n\n" +
+            "2 — Class weapon / Summoner wand\n" +
+            "3 — Ranch Trap\n\n" +
             "COMBAT\n" +
             "Left Click / Space — Light attack\n" +
-            "Left Click / F — Use selected trap or wand\n" +
             "Q — Heavy attack\n" +
-            "Right Click — Block / perfect block\n\n" +
-            "RANCHING\n" +
+            "Right Click — Block / perfect block\n" +
+            "Ranged attacks fire traveling projectiles\n" +
+            "Left Click / F — Use selected trap or wand\n\n" +
+            "RANCHING & RESEARCH\n" +
             "E — Interact / hold to extract\n" +
             "Shift + E — Instant bottle / sell all\n" +
-            "[ and ] — Change bottle size\n\n" +
+            "[ and ] — Change bottle size\n" +
+            "E at Ranch Laboratory — Production research\n\n" +
             "MENUS\n" +
             "P — Ranch shop\n" +
-            "K — Progression\n" +
+            "K — Current class weapon tree\n" +
             "Escape / F1 — Settings\n" +
             "H — Toggle entire HUD\n" +
             "Z — Quick save | X — Quick load";

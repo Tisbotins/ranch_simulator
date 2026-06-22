@@ -8,6 +8,9 @@ public class RanchDeployableSystem : MonoBehaviour
     public const float DeluluWandCost = 4500f;
     public const int MaxActiveDelulus = 3;
 
+    public int CurrentMaxActiveDelulus =>
+        MaxActiveDelulus + (core == null ? 0 : core.Progression.MaxActiveDeluluBonus);
+
     public int TrapCount { get; private set; }
     public bool DeluluWandUnlocked { get; private set; }
     public float DeluluCooldownRemaining { get; private set; }
@@ -72,25 +75,27 @@ public class RanchDeployableSystem : MonoBehaviour
         if (core == null)
             return;
 
-        if (DeluluWandUnlocked)
+        if (core.Classes.CurrentClass != RanchClassType.Summoner)
         {
-            core.Equipment.SelectSlot(3);
-            core.ShowMessage("The Delulu Wand is already unlocked and selected in Slot 4.");
+            core.ShowMessage("The Delulu Wand belongs to the Summoner class. Talk to Dr. Oakberry to change class.");
             return;
         }
 
-        if (!core.Inventory.TrySpendMoney(DeluluWandCost))
-        {
-            core.ShowMessage("Need $" + DeluluWandCost.ToString("F0") + " to unlock the Delulu Wand.");
+        UnlockDeluluWandForClass();
+        core.Equipment.SelectSlot(1);
+    }
+
+    public void UnlockDeluluWandForClass(bool showMessage = true)
+    {
+        if (DeluluWandUnlocked)
             return;
-        }
 
         DeluluWandUnlocked = true;
-        core.Equipment.SelectSlot(3);
-        core.Progression.AddExperience(100f, "Delulu Wand unlocked");
-        core.Save.RequestSave();
-        core.NotifyResourcesChanged();
-        core.ShowMessage("Delulu Wand unlocked. Select Slot 4 and press Left Click or F to summon Delulu.", 8f);
+        core?.Save?.RequestSave();
+        core?.NotifyResourcesChanged();
+
+        if (showMessage && core != null)
+            core.ShowMessage("Dr. Oakberry issued a starter Delulu Wand for your Summoner class.", 6f);
     }
 
     public void UseSelectedDeployable(Transform player)
@@ -101,7 +106,15 @@ public class RanchDeployableSystem : MonoBehaviour
         if (core.Equipment.TrapSlotActive)
             TryPlaceTrap(player);
         else if (core.Equipment.WandSlotActive)
+        {
+            if (core.Classes.CurrentClass != RanchClassType.Summoner)
+            {
+                core.ShowMessage("Only the Summoner class can use the Delulu Wand.");
+                return;
+            }
+
             TrySummonDelulu(player);
+        }
     }
 
     public void RestoreState(int trapCount, bool wandUnlocked)
@@ -193,7 +206,7 @@ public class RanchDeployableSystem : MonoBehaviour
         CreateTrapVisual(root.transform);
 
         RanchTrap trap = root.AddComponent<RanchTrap>();
-        float damage = Mathf.Max(55f, core.Shop.CurrentSwordDamage * 1.35f);
+        float damage = Mathf.Max(55f, core.Shop.CurrentWeaponDamage * 1.35f);
         trap.Initialize(this, core, damage, 120f);
         activeTraps.Add(trap);
 
@@ -205,10 +218,15 @@ public class RanchDeployableSystem : MonoBehaviour
 
     private void TrySummonDelulu(Transform player)
     {
+        if (core.Classes.CurrentClass != RanchClassType.Summoner)
+        {
+            core.ShowMessage("Only the Summoner class can use the Delulu Wand.");
+            return;
+        }
+
         if (!DeluluWandUnlocked)
         {
-            core.ShowMessage("The Delulu Wand is locked. Buy it from the Defense tab in the shop.");
-            return;
+            UnlockDeluluWandForClass(false);
         }
 
         if (DeluluCooldownRemaining > 0f)
@@ -217,9 +235,9 @@ public class RanchDeployableSystem : MonoBehaviour
             return;
         }
 
-        if (ActiveDeluluCount >= MaxActiveDelulus)
+        if (ActiveDeluluCount >= CurrentMaxActiveDelulus)
         {
-            core.ShowMessage("You already have the maximum of " + MaxActiveDelulus + " active Delulus.");
+            core.ShowMessage("You already have the maximum of " + CurrentMaxActiveDelulus + " active Delulus.");
             return;
         }
 
@@ -249,11 +267,18 @@ public class RanchDeployableSystem : MonoBehaviour
 
         Renderer[] renderers = CreateDeluluVisual(root.transform);
         RanchDelulu delulu = root.AddComponent<RanchDelulu>();
-        float damage = Mathf.Max(18f, core.Shop.CurrentSwordDamage * 0.32f);
-        delulu.Initialize(this, core, controller, renderers, damage, 35f);
+        float damage = Mathf.Max(
+            18f,
+            core.Shop.CurrentWeaponDamage * 0.42f *
+            core.Progression.SummonDamageMultiplier
+        );
+        float lifetime = 35f +
+            core.Progression.SummonLifetimeBonus +
+            core.Shop.SummonerLifetimeBonus;
+        delulu.Initialize(this, core, controller, renderers, damage, lifetime);
         activeDelulus.Add(delulu);
 
-        DeluluCooldownRemaining = 5f;
+        DeluluCooldownRemaining = 5f * core.Progression.SummonCooldownMultiplier;
         core.ShowMessage("Delulu summoned. It will protect you for a limited time.", 5f);
     }
 

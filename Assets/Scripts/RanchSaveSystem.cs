@@ -5,7 +5,7 @@ using UnityEngine;
 [Serializable]
 public class RanchSaveData
 {
-    public int saveVersion = 6;
+    public int saveVersion = 7;
     public float rawRanch;
     public float totalRanchCollected;
     public float money;
@@ -49,6 +49,16 @@ public class RanchSaveData
     public bool bowUnlocked;
     public int trapCount;
     public bool deluluWandUnlocked;
+    public int currentClass;
+    public bool oakberryIntroduced;
+    public int lifetimeKnowledgePoints;
+    public int[] classPowerLevels = new int[4];
+    public int[] classTechniqueLevels = new int[4];
+    public int[] classMasteryLevels = new int[4];
+    public int spearWeaponLevel;
+    public int bowWeaponLevel;
+    public int summonerWeaponLevel;
+    public int[] weaponModificationLevels = new int[4];
 }
 
 public class RanchSaveSystem : MonoBehaviour
@@ -414,155 +424,82 @@ public class RanchSaveSystem : MonoBehaviour
 
     private RanchSaveData BuildSaveData()
     {
-        RanchSaveData data =
-            new RanchSaveData();
+        RanchSaveData data = new RanchSaveData();
 
-        data.rawRanch =
-            core.Inventory.RawRanch;
+        data.rawRanch = core.Inventory.RawRanch;
+        data.totalRanchCollected = core.Inventory.TotalRanchCollected;
+        data.money = core.Inventory.Money;
+        data.bottleCounts = core.Inventory.GetBottleCountsCopy();
+        data.unlockedBottleTier = core.Bottles.UnlockedTier;
+        data.selectedBottleTier = core.Bottles.SelectedTier;
+        data.toolTier = core.Upgrades.ToolTier;
+        data.lifetimeRanchExtracted = core.Tree.LifetimeRanchExtracted;
+        data.currentHealth = core.Health.CurrentHealth;
+        data.healthLevel = core.Health.HealthLevel;
+        data.armorLevel = core.Health.ArmorLevel;
+        data.regenerationLevel = core.Health.RegenerationLevel;
+        data.drewLevel = core.Drew.Level;
 
-        data.totalRanchCollected =
-            core.Inventory.TotalRanchCollected;
+        data.structureLevel = core.Shop.StructureLevel;
+        data.swordLevel = core.Shop.SwordLevel;
+        data.spearWeaponLevel = core.Shop.SpearLevel;
+        data.bowWeaponLevel = core.Shop.BowLevel;
+        data.summonerWeaponLevel = core.Shop.SummonerLevel;
+        data.weaponModificationLevels = core.Shop.GetWeaponModificationLevelsCopy();
+        data.automationLevel = core.Shop.AutomationLevel;
+        data.researchLevel = core.Shop.ResearchLevel;
+        data.marketLevel = core.Shop.MarketLevel;
 
-        data.money =
-            core.Inventory.Money;
+        data.bottlesSold = core.BottlesSold;
+        data.cjHeat = core.CJHeat;
+        data.gameWon = core.GameWon;
+        data.highestWaveCleared = core.Waves.HighestWaveCleared;
 
-        data.bottleCounts =
-            core.Inventory.GetBottleCountsCopy();
+        data.progressionLevel = core.Progression.Level;
+        data.progressionExperience = core.Progression.Experience;
+        data.skillPoints = core.Progression.KnowledgePoints;
+        data.lifetimeKnowledgePoints = core.Progression.LifetimeKnowledgePoints;
+        data.classPowerLevels = core.Progression.GetPowerLevelsCopy();
+        data.classTechniqueLevels = core.Progression.GetTechniqueLevelsCopy();
+        data.classMasteryLevels = core.Progression.GetMasteryLevelsCopy();
 
-        data.unlockedBottleTier =
-            core.Bottles.UnlockedTier;
+        // Legacy fields remain populated for backwards-readable JSON.
+        data.combatTraining = core.Progression.CombatTraining;
+        data.survivalTraining = 0;
+        data.engineeringTraining = 0;
 
-        data.selectedBottleTier =
-            core.Bottles.SelectedTier;
+        data.currentClass = (int)core.Classes.CurrentClass;
+        data.oakberryIntroduced = core.Classes.OakberryIntroduced;
+        data.currentStamina = core.Stamina.CurrentStamina;
+        data.cjHasWarned = core.CJ.HasWarned;
+        data.cjBattleUnlocked = core.CJ.BattleUnlocked;
+        data.cjMilestoneIndex = core.CJ.MilestoneIndex;
+        data.unlockedAreas = core.Areas.GetUnlockStateCopy();
+        data.activeEquipmentSlot = core.Equipment.ActiveSlot;
+        data.equippedWeapon = (int)core.Equipment.EquippedWeapon;
+        data.spearUnlocked = core.Equipment.SpearUnlocked;
+        data.bowUnlocked = core.Equipment.BowUnlocked;
+        data.trapCount = core.Deployables.TrapCount;
+        data.deluluWandUnlocked = core.Deployables.DeluluWandUnlocked;
 
-        data.toolTier =
-            core.Upgrades.ToolTier;
-
-        data.lifetimeRanchExtracted =
-            core.Tree.LifetimeRanchExtracted;
-
-        data.currentHealth =
-            core.Health.CurrentHealth;
-
-        data.healthLevel =
-            core.Health.HealthLevel;
-
-        data.armorLevel =
-            core.Health.ArmorLevel;
-
-        data.regenerationLevel =
-            core.Health.RegenerationLevel;
-
-        data.drewLevel =
-            core.Drew.Level;
-
-        data.structureLevel =
-            core.Shop.StructureLevel;
-
-        data.swordLevel =
-            core.Shop.SwordLevel;
-
-        data.automationLevel =
-            core.Shop.AutomationLevel;
-
-        data.researchLevel =
-            core.Shop.ResearchLevel;
-
-        data.marketLevel =
-            core.Shop.MarketLevel;
-
-        data.bottlesSold =
-            core.BottlesSold;
-
-        data.cjHeat =
-            core.CJHeat;
-
-        data.gameWon =
-            core.GameWon;
-
-        data.highestWaveCleared =
-            core.Waves.HighestWaveCleared;
-
-        data.progressionLevel =
-            core.Progression.Level;
-
-        data.progressionExperience =
-            core.Progression.Experience;
-
-        data.skillPoints =
-            core.Progression.SkillPoints;
-
-        data.combatTraining =
-            core.Progression.CombatTraining;
-
-        data.survivalTraining =
-            core.Progression.SurvivalTraining;
-
-        data.engineeringTraining =
-            core.Progression.EngineeringTraining;
-
-        data.currentStamina =
-            core.Stamina.CurrentStamina;
-
-        data.cjHasWarned =
-            core.CJ.HasWarned;
-
-        data.cjBattleUnlocked =
-            core.CJ.BattleUnlocked;
-
-        data.cjMilestoneIndex =
-            core.CJ.MilestoneIndex;
-
-        data.unlockedAreas =
-            core.Areas.GetUnlockStateCopy();
-
-        data.activeEquipmentSlot =
-            core.Equipment.ActiveSlot;
-
-        data.equippedWeapon =
-            (int)core.Equipment.EquippedWeapon;
-
-        data.spearUnlocked =
-            core.Equipment.SpearUnlocked;
-
-        data.bowUnlocked =
-            core.Equipment.BowUnlocked;
-
-        data.trapCount =
-            core.Deployables.TrapCount;
-
-        data.deluluWandUnlocked =
-            core.Deployables.DeluluWandUnlocked;
-
-        Vector3 position =
-            core.Player.transform.position;
-
-        data.playerX =
-            position.x;
-
-        data.playerY =
-            position.y;
-
-        data.playerZ =
-            position.z;
-
-        data.playerRotationY =
-            core.Player.transform.eulerAngles.y;
+        Vector3 position = core.Player.transform.position;
+        data.playerX = position.x;
+        data.playerY = position.y;
+        data.playerZ = position.z;
+        data.playerRotationY = core.Player.transform.eulerAngles.y;
 
         return data;
     }
 
-    private void ApplySaveData(
-        RanchSaveData data)
+    private void ApplySaveData(RanchSaveData data)
     {
         core.Waves.PrepareForLoad();
         core.Deployables.PrepareForLoad();
         core.Bosses.ResetBossState();
 
-        float restoredTotalRanch =
-            data.saveVersion >= 5
-                ? data.totalRanchCollected
-                : GetMigratedTotalRanch(data);
+        float restoredTotalRanch = data.saveVersion >= 5
+            ? data.totalRanchCollected
+            : GetMigratedTotalRanch(data);
 
         core.Inventory.RestoreState(
             data.rawRanch,
@@ -571,57 +508,96 @@ public class RanchSaveSystem : MonoBehaviour
             data.bottleCounts
         );
 
-        core.Bottles.RestoreState(
-            data.unlockedBottleTier,
-            data.selectedBottleTier
-        );
+        core.Bottles.RestoreState(data.unlockedBottleTier, data.selectedBottleTier);
+        core.Upgrades.RestoreState(data.toolTier);
+        core.Tree.RestoreState(data.lifetimeRanchExtracted);
 
-        core.Upgrades.RestoreState(
-            data.toolTier
-        );
+        if (data.saveVersion >= 7)
+        {
+            core.Shop.RestoreState(
+                data.structureLevel,
+                data.swordLevel,
+                data.spearWeaponLevel,
+                data.bowWeaponLevel,
+                data.summonerWeaponLevel,
+                data.automationLevel,
+                data.researchLevel,
+                data.marketLevel,
+                data.weaponModificationLevels
+            );
+        }
+        else
+        {
+            core.Shop.RestoreState(
+                data.structureLevel,
+                data.swordLevel,
+                data.automationLevel,
+                data.researchLevel,
+                data.marketLevel
+            );
+        }
 
-        core.Tree.RestoreState(
-            data.lifetimeRanchExtracted
-        );
+        int restoredClass;
+        bool introduced;
+        if (data.saveVersion >= 7)
+        {
+            restoredClass = Mathf.Clamp(data.currentClass, 0, 3);
+            introduced = data.oakberryIntroduced || data.lifetimeKnowledgePoints > 0 ||
+                data.skillPoints > 0 || data.progressionLevel > 1;
+        }
+        else
+        {
+            if (data.activeEquipmentSlot == 3 && data.deluluWandUnlocked)
+                restoredClass = (int)RanchClassType.Summoner;
+            else if (data.equippedWeapon == (int)RanchWeaponType.Spear)
+                restoredClass = (int)RanchClassType.Spear;
+            else if (data.equippedWeapon == (int)RanchWeaponType.Bow)
+                restoredClass = (int)RanchClassType.Ranged;
+            else
+                restoredClass = (int)RanchClassType.Sword;
 
-        core.Progression.RestoreState(
-            data.progressionLevel,
-            data.progressionExperience,
-            data.skillPoints,
-            data.combatTraining,
-            data.survivalTraining,
-            data.engineeringTraining
-        );
+            introduced = data.progressionLevel > 1 || data.skillPoints > 0 ||
+                data.combatTraining > 0 || data.survivalTraining > 0 || data.engineeringTraining > 0;
+        }
 
-        core.Stamina.RestoreState(
-            data.currentStamina
-        );
+        core.Classes.RestoreState(restoredClass, introduced);
 
+        if (data.saveVersion >= 7)
+        {
+            core.Progression.RestoreState(
+                data.progressionLevel,
+                data.progressionExperience,
+                data.skillPoints,
+                data.lifetimeKnowledgePoints,
+                data.classPowerLevels,
+                data.classTechniqueLevels,
+                data.classMasteryLevels
+            );
+        }
+        else
+        {
+            core.Progression.RestoreLegacyState(
+                data.progressionLevel,
+                data.progressionExperience,
+                data.skillPoints,
+                data.combatTraining,
+                data.survivalTraining,
+                data.engineeringTraining
+            );
+        }
+
+        core.Stamina.RestoreState(data.currentStamina);
         core.Health.RestoreState(
             data.currentHealth,
             data.healthLevel,
             data.armorLevel,
             data.regenerationLevel
         );
-
-        core.Drew.RestoreState(
-            data.drewLevel
-        );
-
-        core.Shop.RestoreState(
-            data.structureLevel,
-            data.swordLevel,
-            data.automationLevel,
-            data.researchLevel,
-            data.marketLevel
-        );
+        core.Drew.RestoreState(data.drewLevel);
 
         if (data.saveVersion >= 4)
         {
-            core.Areas.RestoreState(
-                data.unlockedAreas
-            );
-
+            core.Areas.RestoreState(data.unlockedAreas);
             core.Equipment.RestoreState(
                 data.activeEquipmentSlot,
                 data.equippedWeapon,
@@ -644,29 +620,18 @@ public class RanchSaveSystem : MonoBehaviour
             data.saveVersion >= 6 ? data.trapCount : 0,
             data.saveVersion >= 6 && data.deluluWandUnlocked
         );
+        core.Classes.EnsureCurrentClassEquipment(false);
 
         core.CJ.RestoreState(
             data.cjHasWarned,
             data.cjBattleUnlocked,
             data.cjMilestoneIndex
         );
-
-        core.RestoreProgress(
-            data.bottlesSold,
-            data.cjHeat,
-            data.gameWon
-        );
-
-        core.Waves.RestoreProgress(
-            data.highestWaveCleared
-        );
+        core.RestoreProgress(data.bottlesSold, data.cjHeat, data.gameWon);
+        core.Waves.RestoreProgress(data.highestWaveCleared);
 
         core.Player.Teleport(
-            new Vector3(
-                data.playerX,
-                data.playerY,
-                data.playerZ
-            ),
+            new Vector3(data.playerX, data.playerY, data.playerZ),
             data.playerRotationY
         );
 

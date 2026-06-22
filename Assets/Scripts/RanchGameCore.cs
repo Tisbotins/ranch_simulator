@@ -12,6 +12,8 @@ public class RanchGameCore : MonoBehaviour
     public RanchTreeSystem Tree { get; private set; }
     public RanchHealthSystem Health { get; private set; }
     public RanchStaminaSystem Stamina { get; private set; }
+    public RanchClassSystem Classes { get; private set; }
+    public RanchLaboratorySystem Laboratory { get; private set; }
     public RanchEquipmentSystem Equipment { get; private set; }
     public RanchDeployableSystem Deployables { get; private set; }
     public RanchCombatSystem Combat { get; private set; }
@@ -55,6 +57,8 @@ public class RanchGameCore : MonoBehaviour
         RanchTreeSystem tree,
         RanchHealthSystem health,
         RanchStaminaSystem stamina,
+        RanchClassSystem classes,
+        RanchLaboratorySystem laboratory,
         RanchEquipmentSystem equipment,
         RanchDeployableSystem deployables,
         RanchCombatSystem combat,
@@ -74,6 +78,8 @@ public class RanchGameCore : MonoBehaviour
         Tree = tree;
         Health = health;
         Stamina = stamina;
+        Classes = classes;
+        Laboratory = laboratory;
         Equipment = equipment;
         Deployables = deployables;
         Combat = combat;
@@ -94,6 +100,8 @@ public class RanchGameCore : MonoBehaviour
         RanchTreeTransform = ranchTree;
         Combat.RegisterPlayer(player);
         Progression.RegisterPlayer(player);
+        Classes.RegisterPlayer(player);
+        Laboratory.RegisterPlayer(player);
         Settings.RegisterPlayer(player);
     }
 

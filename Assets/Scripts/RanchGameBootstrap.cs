@@ -24,6 +24,8 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchTreeSystem tree = GetOrAdd<RanchTreeSystem>();
         RanchHealthSystem health = GetOrAdd<RanchHealthSystem>();
         RanchStaminaSystem stamina = GetOrAdd<RanchStaminaSystem>();
+        RanchClassSystem classes = GetOrAdd<RanchClassSystem>();
+        RanchLaboratorySystem laboratory = GetOrAdd<RanchLaboratorySystem>();
         RanchEquipmentSystem equipment = GetOrAdd<RanchEquipmentSystem>();
         RanchDeployableSystem deployables = GetOrAdd<RanchDeployableSystem>();
         RanchCombatSystem combat = GetOrAdd<RanchCombatSystem>();
@@ -47,6 +49,8 @@ public class RanchGameBootstrap : MonoBehaviour
             tree,
             health,
             stamina,
+            classes,
+            laboratory,
             equipment,
             deployables,
             combat,
@@ -67,6 +71,8 @@ public class RanchGameBootstrap : MonoBehaviour
         tree.Initialize(core);
         health.Initialize(core);
         stamina.Initialize(core);
+        classes.Initialize(core);
+        laboratory.Initialize(core);
         equipment.Initialize(core);
         deployables.Initialize(core);
         combat.Initialize(core);
@@ -83,6 +89,8 @@ public class RanchGameBootstrap : MonoBehaviour
         titleScreen.Initialize(core);
         world.Initialize(core);
         world.BuildWorld();
+        classes.BuildWorldObjects();
+        laboratory.BuildWorldObjects();
 
         // The save is loaded only after the player selects Single Player.
         titleScreen.Open();

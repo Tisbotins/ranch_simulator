@@ -42,7 +42,9 @@ public class RanchUI : MonoBehaviour
             return;
 
         if (core == null || core.Inventory == null || core.Shop.IsOpen ||
-            core.Progression.IsOpen || core.Settings.IsOpen)
+            core.Progression.IsOpen || core.Settings.IsOpen ||
+            (core.Classes != null && core.Classes.IsOpen) ||
+            (core.Laboratory != null && core.Laboratory.IsOpen))
         {
             return;
         }
@@ -113,17 +115,19 @@ public class RanchUI : MonoBehaviour
         text.AppendLine("Bottle: " + core.Bottles.GetTierName(tier));
         text.AppendLine("Stored: " + core.Inventory.GetBottleCount(tier));
         text.AppendLine();
-        text.AppendLine("Level " + core.Progression.Level + " — " + core.Progression.CurrentPhaseName);
-        text.AppendLine("XP: " + core.Progression.Experience.ToString("F0") + "/" + core.Progression.ExperienceToNextLevel.ToString("F0"));
+        text.AppendLine("Class: " + core.Classes.CurrentClassName);
+        text.AppendLine("Knowledge Level " + core.Progression.Level + " — " + core.Progression.CurrentPhaseName);
+        text.AppendLine("Knowledge: " + core.Progression.KnowledgePoints + " point(s) | " +
+            core.Progression.Experience.ToString("F0") + "/" + core.Progression.ExperienceToNextLevel.ToString("F0"));
         text.AppendLine("Tree: " + core.Tree.CurrentStageName);
         text.AppendLine("Empire: " + core.Shop.CurrentStructureName);
         text.AppendLine("Weapon: " + core.Equipment.CurrentWeaponName);
         text.AppendLine("Traps: " + core.Deployables.TrapCount + " owned | " + core.Deployables.ActiveTrapCount + " placed");
-        text.AppendLine("Active Delulus: " + core.Deployables.ActiveDeluluCount + "/" + RanchDeployableSystem.MaxActiveDelulus);
+        text.AppendLine("Active Delulus: " + core.Deployables.ActiveDeluluCount + "/" + core.Deployables.CurrentMaxActiveDelulus);
         text.AppendLine("CJ Heat: " + core.CJHeat + " — " + core.CJ.GetHeatStatus());
         text.AppendLine("Save: " + core.Save.LastSaveStatus);
 
-        DrawPanel(new Rect(20f, 20f, 420f, 465f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
+        DrawPanel(new Rect(20f, 20f, 440f, 505f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
     }
 
     private void DrawHealthAndStamina()

@@ -87,6 +87,12 @@ public class RanchTitleScreen : MonoBehaviour
         if (core.Progression != null && core.Progression.IsOpen)
             core.Progression.CloseMenu();
 
+        if (core.Classes != null && core.Classes.IsOpen)
+            core.Classes.CloseMenu();
+
+        if (core.Laboratory != null && core.Laboratory.IsOpen)
+            core.Laboratory.CloseMenu();
+
         Time.timeScale = 0f;
 
         if (core.Player != null)

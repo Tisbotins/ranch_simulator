@@ -54,7 +54,7 @@ public class RanchBossSystem : MonoBehaviour
         core.Inventory.AddRawRanch(ranch);
         core.Progression.AddExperience(175f + wave * 15f, "Boss defeated");
         core.AddCJHeat(75 + wave * 4);
-        core.ShowMessage($"BOSS DEFEATED: {CurrentBossName}! Bonus: ${money:F0}, {ranch:F0} Ranch, and major XP.", 9f);
+        core.ShowMessage($"BOSS DEFEATED: {CurrentBossName}! Bonus: ${money:F0}, {ranch:F0} Ranch, and major Ranch Knowledge.", 9f);
         CurrentBossName = "";
         core.Save.RequestSave();
     }

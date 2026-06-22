@@ -57,6 +57,74 @@ public class RanchShopSystem : MonoBehaviour
         225f, 650f, 1600f, 3900f, 9000f, 22000f
     };
 
+    private readonly string[] spearNames =
+    {
+        "Training Ranch Spear",
+        "Tempered Ranch Pike",
+        "Steel Ranch Lance",
+        "Laboratory Harpoon",
+        "Industrial Ranch Glaive",
+        "Citadel Piercer",
+        "Golden Jockey Breaker"
+    };
+
+    private readonly float[] spearDamage =
+    {
+        27f, 45f, 72f, 110f, 168f, 245f, 360f
+    };
+
+    private readonly float[] spearCosts =
+    {
+        250f, 720f, 1750f, 4200f, 9800f, 23500f
+    };
+
+    private readonly string[] bowNames =
+    {
+        "Starter Ranch Bow",
+        "Oakberry Recurve",
+        "Steel Ranch Longbow",
+        "Laboratory Launcher",
+        "Industrial Compound Bow",
+        "Citadel Railbow",
+        "Golden Ranchcaster"
+    };
+
+    private readonly float[] bowDamage =
+    {
+        18f, 30f, 48f, 75f, 112f, 165f, 245f
+    };
+
+    private readonly float[] bowCosts =
+    {
+        225f, 650f, 1500f, 3600f, 8500f, 20500f
+    };
+
+    private readonly string[] summonerNames =
+    {
+        "Starter Delulu Wand",
+        "Oakberry Focus Wand",
+        "Resonant Ranch Wand",
+        "Laboratory Summoning Rod",
+        "Industrial Delulu Conductor",
+        "Citadel Dream Staff",
+        "Golden Delulu Scepter"
+    };
+
+    private readonly float[] summonerDamage =
+    {
+        16f, 26f, 40f, 60f, 88f, 128f, 185f
+    };
+
+    private readonly float[] summonerCosts =
+    {
+        225f, 650f, 1500f, 3600f, 8500f, 20500f
+    };
+
+    private readonly float[] weaponModificationCosts =
+    {
+        400f, 1100f, 2800f, 7000f, 16500f, 38000f
+    };
+
     private readonly float[] automationCosts =
     {
         500f, 1300f, 3200f, 7500f, 17000f, 36000f
@@ -80,25 +148,35 @@ public class RanchShopSystem : MonoBehaviour
     public bool IsOpen { get; private set; }
     public int StructureLevel { get; private set; }
     public int SwordLevel { get; private set; }
+    public int SpearLevel { get; private set; }
+    public int BowLevel { get; private set; }
+    public int SummonerLevel { get; private set; }
     public int AutomationLevel { get; private set; }
     public int ResearchLevel { get; private set; }
     public int MarketLevel { get; private set; }
 
+    private readonly int[] weaponModificationLevels = new int[4];
+
     public string CurrentStructureName => structureNames[StructureLevel];
     public string CurrentSwordName => swordNames[SwordLevel];
-    public float CurrentSwordDamage => swordDamage[SwordLevel];
+    public float CurrentSwordDamage => CurrentWeaponDamage;
+    public float CurrentWeaponDamage => GetCurrentClassWeaponDamage();
     public float ExtractionResearchMultiplier => 1f + ResearchLevel * 0.12f;
     public float SaleMultiplier => 1f + MarketLevel * 0.10f;
+    public float RangedProjectileSpeedMultiplier =>
+        1f + GetModificationLevel(RanchClassType.Ranged) * 0.08f;
+    public float SummonerLifetimeBonus =>
+        GetModificationLevel(RanchClassType.Summoner) * 2f;
+    public float SpearRangeMultiplier =>
+        1f + GetModificationLevel(RanchClassType.Spear) * 0.045f;
 
     public float CurrentPassiveRanchRate =>
         passiveRanch[StructureLevel] *
-        (1f + ResearchLevel * 0.20f) *
-        (core != null && core.Progression != null ? core.Progression.ProductionMultiplier : 1f);
+        (1f + ResearchLevel * 0.20f);
 
     public float CurrentPassiveMoneyRate =>
         passiveMoney[StructureLevel] *
-        (1f + MarketLevel * 0.25f) *
-        (core != null && core.Progression != null ? core.Progression.SaleMultiplier : 1f);
+        (1f + MarketLevel * 0.25f);
 
     private RanchGameCore core;
     private RanchPlayerController player;
@@ -171,7 +249,9 @@ public class RanchShopSystem : MonoBehaviour
 
     public void OpenShop()
     {
-        if (IsOpen || core.Health.IsDead || core.GameWon || core.Settings.IsOpen)
+        if (IsOpen || core.Health.IsDead || core.GameWon || core.Settings.IsOpen ||
+            (core.Classes != null && core.Classes.IsOpen) ||
+            (core.Laboratory != null && core.Laboratory.IsOpen))
             return;
 
         if (core.Progression.IsOpen)
@@ -218,7 +298,90 @@ public class RanchShopSystem : MonoBehaviour
 
     public float GetNextSwordCost()
     {
-        return SwordLevel >= swordNames.Length - 1 ? -1f : swordCosts[SwordLevel];
+        return GetNextClassWeaponCost();
+    }
+
+    public string GetCurrentClassWeaponName()
+    {
+        return GetWeaponNames(GetCurrentClass())[GetWeaponLevel(GetCurrentClass())];
+    }
+
+    public float GetCurrentClassWeaponDamage()
+    {
+        RanchClassType classType = GetCurrentClass();
+        float damage = GetWeaponDamage(classType)[GetWeaponLevel(classType)];
+        int modification = GetModificationLevel(classType);
+
+        if (classType == RanchClassType.Sword)
+            damage *= 1f + modification * 0.06f;
+        else if (classType == RanchClassType.Spear)
+            damage *= 1f + modification * 0.03f;
+        else if (classType == RanchClassType.Ranged)
+            damage *= 1f + modification * 0.025f;
+        else
+            damage *= 1f + modification * 0.05f;
+
+        return damage;
+    }
+
+    public int GetWeaponLevel(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear: return SpearLevel;
+            case RanchClassType.Ranged: return BowLevel;
+            case RanchClassType.Summoner: return SummonerLevel;
+            default: return SwordLevel;
+        }
+    }
+
+    public int GetModificationLevel(RanchClassType classType)
+    {
+        return weaponModificationLevels[Mathf.Clamp((int)classType, 0, weaponModificationLevels.Length - 1)];
+    }
+
+    public int[] GetWeaponModificationLevelsCopy()
+    {
+        return (int[])weaponModificationLevels.Clone();
+    }
+
+    public float GetNextClassWeaponCost()
+    {
+        RanchClassType classType = GetCurrentClass();
+        int level = GetWeaponLevel(classType);
+        string[] names = GetWeaponNames(classType);
+        float[] costs = GetWeaponCosts(classType);
+        return level >= names.Length - 1 ? -1f : costs[level];
+    }
+
+    public float GetNextClassModificationCost()
+    {
+        int level = GetModificationLevel(GetCurrentClass());
+        return level >= weaponModificationCosts.Length ? -1f : weaponModificationCosts[level];
+    }
+
+    public void BuyCurrentClassModification()
+    {
+        RanchClassType classType = GetCurrentClass();
+        int index = (int)classType;
+        float cost = GetNextClassModificationCost();
+        if (cost < 0f)
+        {
+            core.ShowMessage(GetClassModificationName(classType) + " is already maxed.");
+            return;
+        }
+
+        if (!core.Inventory.TrySpendMoney(cost))
+        {
+            core.ShowMessage("Need $" + cost.ToString("F0") + " for the next " + GetClassModificationName(classType) + " upgrade.");
+            return;
+        }
+
+        weaponModificationLevels[index]++;
+        core.Progression.AddExperience(30f + weaponModificationLevels[index] * 12f, "Class weapon modification");
+        core.Save.RequestSave();
+        core.NotifyResourcesChanged();
+        core.ShowMessage(GetClassModificationName(classType) + " upgraded to Level " + weaponModificationLevels[index] + ".");
     }
 
     public float GetNextAutomationCost()
@@ -269,14 +432,21 @@ public class RanchShopSystem : MonoBehaviour
 
     public void BuyNextSword()
     {
-        float cost = GetNextSwordCost();
+        BuyNextClassWeapon();
+    }
+
+    public void BuyNextClassWeapon()
+    {
+        RanchClassType classType = GetCurrentClass();
+        float cost = GetNextClassWeaponCost();
         if (cost < 0f)
         {
-            core.ShowMessage("The shared weapon damage tier is already maxed.");
+            core.ShowMessage(core.Classes.CurrentClassName + " class weapon tier is already maxed.");
             return;
         }
 
-        if (StructureLevel < Mathf.Max(0, SwordLevel))
+        int currentLevel = GetWeaponLevel(classType);
+        if (StructureLevel < Mathf.Max(0, currentLevel))
         {
             core.ShowMessage("Build a stronger Ranch Empire structure first.");
             return;
@@ -284,14 +454,15 @@ public class RanchShopSystem : MonoBehaviour
 
         if (!core.Inventory.TrySpendMoney(cost))
         {
-            core.ShowMessage("Need $" + cost.ToString("F0") + " for the next weapon damage tier.");
+            core.ShowMessage("Need $" + cost.ToString("F0") + " for the next " + core.Classes.CurrentClassName + " class weapon.");
             return;
         }
 
-        SwordLevel++;
-        core.Progression.AddExperience(35f + SwordLevel * 15f, "Weapon upgrade");
+        SetWeaponLevel(classType, currentLevel + 1);
+        core.Progression.AddExperience(35f + (currentLevel + 1) * 15f, "Class weapon upgrade");
         core.Save.RequestSave();
-        core.ShowMessage("Weapon damage upgraded to Tier " + (SwordLevel + 1) + " with " + CurrentSwordDamage.ToString("F0") + " base damage.");
+        core.NotifyResourcesChanged();
+        core.ShowMessage("Purchased " + GetCurrentClassWeaponName() + " with " + CurrentWeaponDamage.ToString("F0") + " base power.");
     }
 
     public void BuyNextAutomation()
@@ -431,17 +602,53 @@ public class RanchShopSystem : MonoBehaviour
     public void RestoreState(
         int structureLevel,
         int swordLevel,
+        int spearLevel,
+        int bowLevel,
+        int summonerLevel,
+        int automationLevel,
+        int researchLevel,
+        int marketLevel,
+        int[] restoredModificationLevels)
+    {
+        StructureLevel = Mathf.Clamp(structureLevel, 0, structureNames.Length - 1);
+        SwordLevel = Mathf.Clamp(swordLevel, 0, swordNames.Length - 1);
+        SpearLevel = Mathf.Clamp(spearLevel, 0, spearNames.Length - 1);
+        BowLevel = Mathf.Clamp(bowLevel, 0, bowNames.Length - 1);
+        SummonerLevel = Mathf.Clamp(summonerLevel, 0, summonerNames.Length - 1);
+        AutomationLevel = Mathf.Clamp(automationLevel, 0, automationIntervals.Length - 1);
+        ResearchLevel = Mathf.Clamp(researchLevel, 0, researchCosts.Length);
+        MarketLevel = Mathf.Clamp(marketLevel, 0, marketCosts.Length);
+
+        for (int i = 0; i < weaponModificationLevels.Length; i++)
+        {
+            int value = restoredModificationLevels != null && i < restoredModificationLevels.Length
+                ? restoredModificationLevels[i]
+                : 0;
+            weaponModificationLevels[i] = Mathf.Clamp(value, 0, weaponModificationCosts.Length);
+        }
+
+        RefreshEmpireVisual();
+        core.NotifyResourcesChanged();
+    }
+
+    public void RestoreState(
+        int structureLevel,
+        int swordLevel,
         int automationLevel,
         int researchLevel,
         int marketLevel)
     {
-        StructureLevel = Mathf.Clamp(structureLevel, 0, structureNames.Length - 1);
-        SwordLevel = Mathf.Clamp(swordLevel, 0, swordNames.Length - 1);
-        AutomationLevel = Mathf.Clamp(automationLevel, 0, automationIntervals.Length - 1);
-        ResearchLevel = Mathf.Clamp(researchLevel, 0, researchCosts.Length);
-        MarketLevel = Mathf.Clamp(marketLevel, 0, marketCosts.Length);
-        RefreshEmpireVisual();
-        core.NotifyResourcesChanged();
+        RestoreState(
+            structureLevel,
+            swordLevel,
+            0,
+            0,
+            0,
+            automationLevel,
+            researchLevel,
+            marketLevel,
+            null
+        );
     }
 
     private void RefreshEmpireVisual()
@@ -568,19 +775,17 @@ public class RanchShopSystem : MonoBehaviour
             BuyNextStructure
         );
 
-        float researchCost = GetNextResearchCost();
         DrawCard(
             new Rect(745f, 220f, 390f, 300f),
-            "RANCH RESEARCH",
-            "Level: " + ResearchLevel + "/6\n\nEach level adds 20% passive Ranch output and 12% hand extraction.\n\n" +
-            (StructureLevel >= 3 ? "Laboratory online." : "Requires the Ranch Laboratory."),
+            "RANCH PRODUCTION",
+            "Research Level: " + ResearchLevel + "/6\n\nProduction upgrades have moved out of the Ranch Knowledge tree and this shop. Visit the physical Ranch Laboratory in the Laboratory District.",
             smallBodyStyle
         );
         DrawButton(
             new Rect(780f, 445f, 320f, 52f),
-            researchCost < 0f ? "RESEARCH MAXED" : "RESEARCH — $" + researchCost.ToString("F0"),
-            researchCost >= 0f,
-            BuyNextResearch
+            StructureLevel >= 3 ? "VISIT RANCH LABORATORY" : "BUILD LABORATORY FIRST",
+            false,
+            null
         );
 
         float marketCost = GetNextMarketCost();
@@ -654,39 +859,53 @@ public class RanchShopSystem : MonoBehaviour
 
     private void DrawWeaponsPage()
     {
-        DrawWeaponCard(
-            new Rect(55f, 220f, 470f, 390f),
-            RanchWeaponType.Sword,
-            "BALANCED"
-        );
+        RanchClassType classType = GetCurrentClass();
+        int weaponLevel = GetWeaponLevel(classType);
+        int modificationLevel = GetModificationLevel(classType);
+        float weaponCost = GetNextClassWeaponCost();
+        float modificationCost = GetNextClassModificationCost();
 
-        DrawWeaponCard(
-            new Rect(565f, 220f, 470f, 390f),
-            RanchWeaponType.Spear,
-            "LONG REACH"
-        );
-
-        DrawWeaponCard(
-            new Rect(1075f, 220f, 470f, 390f),
-            RanchWeaponType.Bow,
-            "RANGED"
-        );
-
-        float weaponCost = GetNextSwordCost();
         DrawCard(
-            new Rect(55f, 640f, 1490f, 150f),
-            "SHARED WEAPON DAMAGE TIER",
-            "Current tier: " + (SwordLevel + 1) + "/" + swordNames.Length +
-            " | Base damage: " + CurrentSwordDamage.ToString("F0") +
-            "\nThis upgrade improves Sword, Spear, and Bow damage together.",
-            smallBodyStyle
+            new Rect(55f, 220f, 470f, 570f),
+            core.Classes.CurrentClassName.ToUpperInvariant() + " CLASS",
+            "Current weapon: " + GetCurrentClassWeaponName() +
+            "\nWeapon tier: " + (weaponLevel + 1) + "/" + GetWeaponNames(classType).Length +
+            "\nCurrent base power: " + CurrentWeaponDamage.ToString("F0") +
+            "\n\n" + core.Classes.GetClassDescription(classType) +
+            "\n\nOnly equipment for your current class appears here. Talk to Dr. Oakberry to change class.",
+            bodyStyle
         );
 
+        DrawCard(
+            new Rect(565f, 220f, 470f, 570f),
+            "NEXT " + core.Classes.CurrentClassName.ToUpperInvariant() + " WEAPON",
+            weaponCost < 0f
+                ? "Every weapon tier for this class has been purchased."
+                : "Next: " + GetWeaponNames(classType)[weaponLevel + 1] +
+                  "\nNext base power: " + GetWeaponDamage(classType)[weaponLevel + 1].ToString("F0") +
+                  "\n\nNew weapon tiers are purchased with money and remain saved for this class.",
+            bodyStyle
+        );
         DrawButton(
-            new Rect(1030f, 690f, 470f, 58f),
-            weaponCost < 0f ? "WEAPON DAMAGE MAXED" : "UPGRADE DAMAGE — $" + weaponCost.ToString("F0"),
+            new Rect(600f, 700f, 400f, 58f),
+            weaponCost < 0f ? "WEAPON TIER MAXED" : "BUY NEXT WEAPON — $" + weaponCost.ToString("F0"),
             weaponCost >= 0f,
-            BuyNextSword
+            BuyNextClassWeapon
+        );
+
+        DrawCard(
+            new Rect(1075f, 220f, 470f, 570f),
+            GetClassModificationName(classType).ToUpperInvariant(),
+            "Upgrade Level: " + modificationLevel + "/" + weaponModificationCosts.Length +
+            "\n\n" + GetClassModificationDescription(classType) +
+            "\n\nRanch Knowledge upgrades remain in the K menu. Money-based weapon modifications are purchased here.",
+            bodyStyle
+        );
+        DrawButton(
+            new Rect(1110f, 700f, 400f, 58f),
+            modificationCost < 0f ? "MODIFICATION MAXED" : "UPGRADE — $" + modificationCost.ToString("F0"),
+            modificationCost >= 0f,
+            BuyCurrentClassModification
         );
     }
 
@@ -733,94 +952,45 @@ public class RanchShopSystem : MonoBehaviour
         float armorCost = core.Health.GetNextArmorCost();
         float regenCost = core.Health.GetNextRegenerationCost();
 
-        DrawCard(
-            new Rect(55f, 220f, 470f, 260f),
-            "MAXIMUM HEALTH",
-            "Current: " + core.Health.MaxHealth.ToString("F0") + " HP\nLevel: " + core.Health.HealthLevel + "/6\n\nMore health helps you survive later waves and bosses.",
-            smallBodyStyle
-        );
-        DrawButton(
-            new Rect(90f, 405f, 400f, 52f),
+        DrawCard(new Rect(55f, 220f, 470f, 260f), "MAXIMUM HEALTH",
+            "Current: " + core.Health.MaxHealth.ToString("F0") + " HP\nLevel: " + core.Health.HealthLevel + "/6\n\nMore health helps you survive later waves and bosses.", smallBodyStyle);
+        DrawButton(new Rect(90f, 405f, 400f, 52f),
             healthCost < 0f ? "HEALTH MAXED" : "UPGRADE — $" + healthCost.ToString("F0"),
-            healthCost >= 0f,
-            core.Health.BuyHealthUpgrade
-        );
+            healthCost >= 0f, core.Health.BuyHealthUpgrade);
 
-        DrawCard(
-            new Rect(565f, 220f, 470f, 260f),
-            "ARMOR",
-            "Damage reduction: " + core.Health.ArmorPercent.ToString("F0") + "%\nLevel: " + core.Health.ArmorLevel + "/6\n\nArmor reduces every hit that gets through blocking or dodging.",
-            smallBodyStyle
-        );
-        DrawButton(
-            new Rect(600f, 405f, 400f, 52f),
+        DrawCard(new Rect(565f, 220f, 470f, 260f), "ARMOR",
+            "Damage reduction: " + core.Health.ArmorPercent.ToString("F0") + "%\nLevel: " + core.Health.ArmorLevel + "/6\n\nArmor reduces every hit that gets through blocking or dodging.", smallBodyStyle);
+        DrawButton(new Rect(600f, 405f, 400f, 52f),
             armorCost < 0f ? "ARMOR MAXED" : "UPGRADE — $" + armorCost.ToString("F0"),
-            armorCost >= 0f,
-            core.Health.BuyArmorUpgrade
-        );
+            armorCost >= 0f, core.Health.BuyArmorUpgrade);
 
-        DrawCard(
-            new Rect(1075f, 220f, 470f, 260f),
-            "REGENERATION",
-            "Current: " + core.Health.RegenerationPerSecond.ToString("0.00") + " HP/sec\nLevel: " + core.Health.RegenerationLevel + "/6\n\nRegeneration restores health between enemy attacks.",
-            smallBodyStyle
-        );
-        DrawButton(
-            new Rect(1110f, 405f, 400f, 52f),
+        DrawCard(new Rect(1075f, 220f, 470f, 260f), "REGENERATION",
+            "Current: " + core.Health.RegenerationPerSecond.ToString("0.00") + " HP/sec\nLevel: " + core.Health.RegenerationLevel + "/6\n\nRegeneration restores health between enemy attacks.", smallBodyStyle);
+        DrawButton(new Rect(1110f, 405f, 400f, 52f),
             regenCost < 0f ? "REGEN MAXED" : "UPGRADE — $" + regenCost.ToString("F0"),
-            regenCost >= 0f,
-            core.Health.BuyRegenerationUpgrade
-        );
+            regenCost >= 0f, core.Health.BuyRegenerationUpgrade);
 
         float healCost = core.Health.GetFullHealCost();
-        DrawCard(
-            new Rect(55f, 520f, 470f, 270f),
-            "RANCH MEDICAL BAY",
+        DrawCard(new Rect(55f, 520f, 470f, 270f), "RANCH MEDICAL BAY",
             "Current health: " + core.Health.CurrentHealth.ToString("F0") + " / " + core.Health.MaxHealth.ToString("F0") +
-            "\n\nBuy a full heal before a difficult wave or the CJ final battle.",
-            smallBodyStyle
-        );
-        DrawButton(
-            new Rect(90f, 710f, 400f, 52f),
+            "\n\nBuy a full heal before a difficult wave or the CJ final battle.", smallBodyStyle);
+        DrawButton(new Rect(90f, 710f, 400f, 52f),
             healCost <= 0f ? "ALREADY FULL HEALTH" : "FULL HEAL — $" + healCost.ToString("F0"),
-            healCost > 0f,
-            core.Health.BuyFullHeal
-        );
+            healCost > 0f, core.Health.BuyFullHeal);
 
-        DrawCard(
-            new Rect(565f, 520f, 470f, 270f),
-            "RANCH TRAPS — SLOT 3",
+        DrawCard(new Rect(565f, 520f, 470f, 270f), "RANCH TRAPS — SLOT 3",
             "Owned: " + core.Deployables.TrapCount +
             "\nPlaced: " + core.Deployables.ActiveTrapCount +
-            "\n\nPlace with Left Click or F. Traps damage, stun, and knock enemies back. Unused traps expire after 120 seconds.",
-            smallBodyStyle
-        );
-        DrawButton(
-            new Rect(600f, 710f, 400f, 52f),
+            "\n\nPlace with Left Click or F. Traps damage, stun, and knock enemies back. Unused traps expire after 120 seconds.", smallBodyStyle);
+        DrawButton(new Rect(600f, 710f, 400f, 52f),
             "BUY " + RanchDeployableSystem.TrapPackSize + " TRAPS — $" + RanchDeployableSystem.TrapPackCost.ToString("F0"),
-            true,
-            core.Deployables.BuyTrapPack
-        );
+            true, core.Deployables.BuyTrapPack);
 
-        string wandStatus = core.Deployables.DeluluWandUnlocked
-            ? "UNLOCKED | Active Delulus: " + core.Deployables.ActiveDeluluCount + "/" + RanchDeployableSystem.MaxActiveDelulus
-            : "LOCKED";
-
-        DrawCard(
-            new Rect(1075f, 520f, 470f, 270f),
-            "DELULU WAND — SLOT 4",
-            "Status: " + wandStatus +
-            "\n\nPress 4, then Left Click or F to summon a little Delulu protector. Delulus chase and attack nearby enemies before fading away.",
-            smallBodyStyle
-        );
-        DrawButton(
-            new Rect(1110f, 710f, 400f, 52f),
-            core.Deployables.DeluluWandUnlocked
-                ? "SELECT DELULU WAND"
-                : "UNLOCK WAND — $" + RanchDeployableSystem.DeluluWandCost.ToString("F0"),
-            true,
-            core.Deployables.BuyDeluluWand
-        );
+        DrawCard(new Rect(1075f, 520f, 470f, 270f), "CLASS EQUIPMENT",
+            "The Delulu Wand has moved to the Summoner class.\n\nTalk to Dr. Oakberry to become a Summoner, then purchase wand tiers and modifications from the Weapons tab.", smallBodyStyle);
+        DrawButton(new Rect(1110f, 710f, 400f, 52f),
+            core.Classes.CurrentClass == RanchClassType.Summoner ? "SUMMONER CLASS ACTIVE" : "VISIT DR. OAKBERRY",
+            false, null);
     }
 
     private void DrawAutomationPage()
@@ -856,6 +1026,84 @@ public class RanchShopSystem : MonoBehaviour
             "\n\nUse [ and ] outside the shop to change bottle size.",
             smallBodyStyle
         );
+    }
+
+    private RanchClassType GetCurrentClass()
+    {
+        return core != null && core.Classes != null
+            ? core.Classes.CurrentClass
+            : RanchClassType.Sword;
+    }
+
+    private string[] GetWeaponNames(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear: return spearNames;
+            case RanchClassType.Ranged: return bowNames;
+            case RanchClassType.Summoner: return summonerNames;
+            default: return swordNames;
+        }
+    }
+
+    private float[] GetWeaponDamage(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear: return spearDamage;
+            case RanchClassType.Ranged: return bowDamage;
+            case RanchClassType.Summoner: return summonerDamage;
+            default: return swordDamage;
+        }
+    }
+
+    private float[] GetWeaponCosts(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear: return spearCosts;
+            case RanchClassType.Ranged: return bowCosts;
+            case RanchClassType.Summoner: return summonerCosts;
+            default: return swordCosts;
+        }
+    }
+
+    private void SetWeaponLevel(RanchClassType classType, int level)
+    {
+        level = Mathf.Clamp(level, 0, GetWeaponNames(classType).Length - 1);
+        switch (classType)
+        {
+            case RanchClassType.Spear: SpearLevel = level; break;
+            case RanchClassType.Ranged: BowLevel = level; break;
+            case RanchClassType.Summoner: SummonerLevel = level; break;
+            default: SwordLevel = level; break;
+        }
+    }
+
+    private static string GetClassModificationName(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear: return "Spear Shaft Tuning";
+            case RanchClassType.Ranged: return "Projectile Launcher Tuning";
+            case RanchClassType.Summoner: return "Delulu Resonance";
+            default: return "Blade Tempering";
+        }
+    }
+
+    private static string GetClassModificationDescription(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear:
+                return "Improves spear reach by 4.5% and base damage by 3% per level.";
+            case RanchClassType.Ranged:
+                return "Improves projectile speed by 8% and base projectile damage by 2.5% per level.";
+            case RanchClassType.Summoner:
+                return "Adds 2 seconds of Delulu lifetime and 5% wand power per level.";
+            default:
+                return "Improves sword base damage by 6% per level.";
+        }
     }
 
     private string GetStructureDescription()

@@ -57,7 +57,9 @@ public class RanchPlayerController : MonoBehaviour
         }
 
         if (core.GameWon || core.Health.IsDead || core.Shop.IsOpen ||
-            core.Progression.IsOpen || core.Settings.IsOpen)
+            core.Progression.IsOpen || core.Settings.IsOpen ||
+            (core.Classes != null && core.Classes.IsOpen) ||
+            (core.Laboratory != null && core.Laboratory.IsOpen))
         {
             core.Equipment.SetExtractionOverride(false);
             return;
@@ -121,6 +123,29 @@ public class RanchPlayerController : MonoBehaviour
             transform.forward * Input.GetAxisRaw("Vertical");
 
         return move.magnitude > 1f ? move.normalized : move;
+    }
+
+    public Vector3 GetProjectileOrigin()
+    {
+        return transform.position + Vector3.up * 1.55f + transform.forward * 0.9f;
+    }
+
+    public Vector3 GetProjectileDirection(RanchEnemy target)
+    {
+        Vector3 origin = GetProjectileOrigin();
+
+        if (target != null && target.Health > 0f)
+        {
+            Vector3 targetPoint = target.transform.position + Vector3.up * 0.9f;
+            Vector3 assistedDirection = targetPoint - origin;
+            if (assistedDirection.sqrMagnitude > 0.01f)
+                return assistedDirection.normalized;
+        }
+
+        if (playerCamera != null)
+            return playerCamera.transform.forward.normalized;
+
+        return transform.forward;
     }
 
     public void BeginDodge(Vector3 direction, float distance, float duration)
@@ -239,8 +264,6 @@ public class RanchPlayerController : MonoBehaviour
             core.Equipment.SelectSlot(1);
         if (Input.GetKeyDown(KeyCode.Alpha3))
             core.Equipment.SelectSlot(2);
-        if (Input.GetKeyDown(KeyCode.Alpha4))
-            core.Equipment.SelectSlot(3);
     }
 
     private void HandleBottleSelection()
