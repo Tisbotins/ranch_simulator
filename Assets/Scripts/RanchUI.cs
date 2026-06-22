@@ -7,6 +7,7 @@ public class RanchUI : MonoBehaviour
     private const float VirtualHeight = 900f;
 
     private RanchGameCore core;
+    private RanchTitleScreen titleScreen;
     private Texture2D panelTexture;
     private Texture2D selectedTexture;
     private Texture2D healthFillTexture;
@@ -31,10 +32,15 @@ public class RanchUI : MonoBehaviour
     public void Initialize(RanchGameCore gameCore)
     {
         core = gameCore;
+        titleScreen = GetComponent<RanchTitleScreen>();
     }
 
     private void OnGUI()
     {
+        // Nothing from the gameplay HUD should render over the title screen.
+        if (titleScreen != null && titleScreen.IsOpen)
+            return;
+
         if (core == null || core.Inventory == null || core.Shop.IsOpen ||
             core.Progression.IsOpen || core.Settings.IsOpen)
         {
@@ -55,17 +61,28 @@ public class RanchUI : MonoBehaviour
             new Vector3(scale, scale, 1f)
         );
 
-        bool forceCriticalHud = core.Health.IsDead || core.GameWon || core.CJ.FinalBattleActive;
-
-        if (core.Settings.HudVisible || forceCriticalHud)
+        if (core.Settings.HudVisible)
         {
-            DrawMainPanel();
-            DrawHealthAndStamina();
-            DrawWavePanel();
-            DrawCJGatePanel();
-            DrawEquipmentSlots();
-            DrawMessage();
-            DrawPrompt();
+            if (core.Settings.ResourcesPanelVisible)
+                DrawMainPanel();
+
+            if (core.Settings.PlayerStatusVisible)
+                DrawHealthAndStamina();
+
+            if (core.Settings.WavePanelVisible)
+                DrawWavePanel();
+
+            if (core.Settings.CJPanelVisible)
+                DrawCJGatePanel();
+
+            if (core.Settings.EquipmentSlotsVisible)
+                DrawEquipmentSlots();
+
+            if (core.Settings.MessagesVisible)
+                DrawMessage();
+
+            if (core.Settings.InteractionPromptVisible)
+                DrawPrompt();
         }
         else
         {
@@ -73,6 +90,7 @@ public class RanchUI : MonoBehaviour
             GUI.Label(new Rect(28f, 24f, 224f, 38f), "HUD OFF — PRESS H", centeredStyle);
         }
 
+        // Damage, death, and victory feedback stay visible for gameplay safety.
         if (core.Health.DamageFlashTime > 0f)
             GUI.DrawTexture(new Rect(0f, 0f, VirtualWidth, VirtualHeight), damageTexture);
 

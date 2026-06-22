@@ -6,28 +6,67 @@ public class RanchSettingsSystem : MonoBehaviour
     public bool IsOpen { get; private set; }
     public bool HudVisible { get; private set; } = true;
 
+    public bool ResourcesPanelVisible => resourcesPanelVisible;
+    public bool PlayerStatusVisible => playerStatusVisible;
+    public bool WavePanelVisible => wavePanelVisible;
+    public bool CJPanelVisible => cjPanelVisible;
+    public bool EquipmentSlotsVisible => equipmentSlotsVisible;
+    public bool MessagesVisible => messagesVisible;
+    public bool InteractionPromptVisible => interactionPromptVisible;
+
     private const string HudPreferenceKey = "RanchSimulatorHudVisible";
+    private const string ResourcesPreferenceKey = "RanchSimulatorHudResources";
+    private const string PlayerStatusPreferenceKey = "RanchSimulatorHudPlayerStatus";
+    private const string WavePreferenceKey = "RanchSimulatorHudWaves";
+    private const string CJPreferenceKey = "RanchSimulatorHudCJ";
+    private const string EquipmentPreferenceKey = "RanchSimulatorHudEquipment";
+    private const string MessagesPreferenceKey = "RanchSimulatorHudMessages";
+    private const string PromptPreferenceKey = "RanchSimulatorHudPrompt";
+
     private const float VirtualWidth = 1600f;
     private const float VirtualHeight = 900f;
 
     private RanchGameCore core;
     private RanchPlayerController player;
+    private RanchTitleScreen titleScreen;
     private float previousTimeScale = 1f;
+
+    private bool resourcesPanelVisible = true;
+    private bool playerStatusVisible = true;
+    private bool wavePanelVisible = true;
+    private bool cjPanelVisible = true;
+    private bool equipmentSlotsVisible = true;
+    private bool messagesVisible = true;
+    private bool interactionPromptVisible = true;
 
     private Texture2D backgroundTexture;
     private Texture2D cardTexture;
     private Texture2D buttonTexture;
+    private Texture2D toggleOnTexture;
+    private Texture2D toggleOffTexture;
     private GUIStyle backgroundStyle;
     private GUIStyle cardStyle;
     private GUIStyle titleStyle;
+    private GUIStyle sectionTitleStyle;
     private GUIStyle bodyStyle;
     private GUIStyle buttonStyle;
+    private GUIStyle toggleOnStyle;
+    private GUIStyle toggleOffStyle;
     private bool stylesReady;
 
     public void Initialize(RanchGameCore gameCore)
     {
         core = gameCore;
-        HudVisible = PlayerPrefs.GetInt(HudPreferenceKey, 1) == 1;
+        titleScreen = GetComponent<RanchTitleScreen>();
+
+        HudVisible = LoadPreference(HudPreferenceKey);
+        resourcesPanelVisible = LoadPreference(ResourcesPreferenceKey);
+        playerStatusVisible = LoadPreference(PlayerStatusPreferenceKey);
+        wavePanelVisible = LoadPreference(WavePreferenceKey);
+        cjPanelVisible = LoadPreference(CJPreferenceKey);
+        equipmentSlotsVisible = LoadPreference(EquipmentPreferenceKey);
+        messagesVisible = LoadPreference(MessagesPreferenceKey);
+        interactionPromptVisible = LoadPreference(PromptPreferenceKey);
     }
 
     public void RegisterPlayer(RanchPlayerController playerController)
@@ -38,6 +77,10 @@ public class RanchSettingsSystem : MonoBehaviour
     private void Update()
     {
         if (core == null)
+            return;
+
+        // The title screen owns keyboard and mouse input until Single Player starts.
+        if (titleScreen != null && titleScreen.IsOpen)
             return;
 
         if (Input.GetKeyDown(KeyCode.H))
@@ -63,17 +106,26 @@ public class RanchSettingsSystem : MonoBehaviour
     public void ToggleHud()
     {
         HudVisible = !HudVisible;
-        PlayerPrefs.SetInt(HudPreferenceKey, HudVisible ? 1 : 0);
-        PlayerPrefs.Save();
+        SavePreference(HudPreferenceKey, HudVisible);
 
         if (core != null)
-            core.ShowMessage(HudVisible ? "HUD enabled." : "HUD hidden. Press H to show it again.");
+        {
+            core.ShowMessage(
+                HudVisible
+                    ? "HUD enabled. Individual HUD elements can be changed in Settings."
+                    : "HUD hidden. Press H to show it again.",
+                3f
+            );
+        }
     }
 
     public void OpenMenu()
     {
-        if (IsOpen || core == null || core.Shop.IsOpen || core.Progression.IsOpen)
+        if (IsOpen || core == null || core.Shop.IsOpen || core.Progression.IsOpen ||
+            (titleScreen != null && titleScreen.IsOpen))
+        {
             return;
+        }
 
         IsOpen = true;
         previousTimeScale = Time.timeScale;
@@ -94,16 +146,27 @@ public class RanchSettingsSystem : MonoBehaviour
         IsOpen = false;
         Time.timeScale = previousTimeScale <= 0f ? 1f : previousTimeScale;
 
-        if (player != null && !core.Health.IsDead && !core.GameWon)
+        if (player != null && !core.Health.IsDead && !core.GameWon &&
+            (titleScreen == null || !titleScreen.IsOpen))
+        {
             player.enabled = true;
+        }
 
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        if (titleScreen != null && titleScreen.IsOpen)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        else
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
     }
 
     private void OnGUI()
     {
-        if (!IsOpen || core == null)
+        if (!IsOpen || core == null || (titleScreen != null && titleScreen.IsOpen))
             return;
 
         EnsureStyles();
@@ -121,46 +184,125 @@ public class RanchSettingsSystem : MonoBehaviour
         );
 
         GUI.Box(new Rect(90f, 55f, 1420f, 790f), GUIContent.none, backgroundStyle);
-        GUI.Label(new Rect(140f, 85f, 1320f, 60f), "SETTINGS & CONTROLS", titleStyle);
+        GUI.Label(new Rect(140f, 80f, 1320f, 58f), "SETTINGS & CONTROLS", titleStyle);
 
-        GUI.Box(new Rect(140f, 175f, 640f, 560f), GUIContent.none, cardStyle);
-        GUI.Label(new Rect(175f, 200f, 570f, 485f), BuildControlsText(), bodyStyle);
+        // Controls card.
+        GUI.Box(new Rect(140f, 160f, 570f, 575f), GUIContent.none, cardStyle);
+        GUI.Label(new Rect(170f, 180f, 510f, 34f), "CONTROLS", sectionTitleStyle);
+        GUI.Label(new Rect(170f, 225f, 510f, 485f), BuildControlsText(), bodyStyle);
 
-        GUI.Box(new Rect(825f, 175f, 635f, 560f), GUIContent.none, cardStyle);
+        // Quick actions card.
+        GUI.Box(new Rect(750f, 160f, 710f, 205f), GUIContent.none, cardStyle);
+        GUI.Label(new Rect(780f, 180f, 650f, 34f), "QUICK ACTIONS", sectionTitleStyle);
         GUI.Label(
-            new Rect(860f, 200f, 565f, 110f),
-            "QUICK ACTIONS\n\nSave status: " + core.Save.LastSaveStatus,
+            new Rect(780f, 216f, 650f, 30f),
+            "Save status: " + core.Save.LastSaveStatus,
             bodyStyle
         );
 
-        if (GUI.Button(new Rect(870f, 325f, 250f, 62f), HudVisible ? "HIDE HUD [H]" : "SHOW HUD [H]", buttonStyle))
+        if (GUI.Button(
+            new Rect(780f, 270f, 145f, 58f),
+            HudVisible ? "HUD: ON [H]" : "HUD: OFF [H]",
+            HudVisible ? toggleOnStyle : toggleOffStyle))
+        {
             ToggleHud();
+        }
 
-        if (GUI.Button(new Rect(1160f, 325f, 250f, 62f), "QUICK SAVE", buttonStyle))
+        if (GUI.Button(new Rect(945f, 270f, 145f, 58f), "QUICK SAVE", buttonStyle))
             core.Save.SaveGame(true);
 
-        if (GUI.Button(new Rect(870f, 415f, 250f, 62f), "QUICK LOAD", buttonStyle))
+        if (GUI.Button(new Rect(1110f, 270f, 145f, 58f), "QUICK LOAD", buttonStyle))
             core.Save.LoadGame(true);
 
-        if (GUI.Button(new Rect(1160f, 415f, 250f, 62f), "UNSTUCK", buttonStyle))
+        if (GUI.Button(new Rect(1275f, 270f, 145f, 58f), "UNSTUCK", buttonStyle))
         {
             player?.ReturnToSafePosition();
             core.ShowMessage("Returned to the last safe position.");
         }
 
+        // Individual HUD element controls.
+        GUI.Box(new Rect(750f, 390f, 710f, 345f), GUIContent.none, cardStyle);
+        GUI.Label(new Rect(780f, 410f, 650f, 34f), "HUD ELEMENTS", sectionTitleStyle);
         GUI.Label(
-            new Rect(875f, 510f, 530f, 150f),
-            "The game autosaves after progression changes and inventory changes.\n\nThe Unstuck button returns you to your most recent safe grounded position.",
+            new Rect(780f, 445f, 650f, 28f),
+            "These choices are remembered between game sessions.",
             bodyStyle
         );
 
-        if (GUI.Button(new Rect(600f, 760f, 400f, 58f), "RESUME [ESC]", buttonStyle))
+        if (DrawToggleButton(new Rect(780f, 485f, 300f, 52f), "RESOURCES", resourcesPanelVisible))
+            ToggleElement(ref resourcesPanelVisible, ResourcesPreferenceKey, "Resources panel");
+
+        if (DrawToggleButton(new Rect(1120f, 485f, 300f, 52f), "HEALTH & STAMINA", playerStatusVisible))
+            ToggleElement(ref playerStatusVisible, PlayerStatusPreferenceKey, "Health and stamina");
+
+        if (DrawToggleButton(new Rect(780f, 550f, 300f, 52f), "WAVE STATUS", wavePanelVisible))
+            ToggleElement(ref wavePanelVisible, WavePreferenceKey, "Wave status");
+
+        if (DrawToggleButton(new Rect(1120f, 550f, 300f, 52f), "CJ PROGRESS", cjPanelVisible))
+            ToggleElement(ref cjPanelVisible, CJPreferenceKey, "CJ progress");
+
+        if (DrawToggleButton(new Rect(780f, 615f, 300f, 52f), "EQUIPMENT SLOTS", equipmentSlotsVisible))
+            ToggleElement(ref equipmentSlotsVisible, EquipmentPreferenceKey, "Equipment slots");
+
+        if (DrawToggleButton(new Rect(1120f, 615f, 300f, 52f), "MESSAGES", messagesVisible))
+            ToggleElement(ref messagesVisible, MessagesPreferenceKey, "Messages");
+
+        if (DrawToggleButton(new Rect(780f, 680f, 300f, 52f), "INTERACTION PROMPT", interactionPromptVisible))
+            ToggleElement(ref interactionPromptVisible, PromptPreferenceKey, "Interaction prompt");
+
+        if (GUI.Button(new Rect(1120f, 680f, 300f, 52f), "RESET HUD ELEMENTS", buttonStyle))
+            ResetHudElements();
+
+        if (GUI.Button(new Rect(600f, 765f, 400f, 58f), "RESUME [ESC]", buttonStyle))
         {
             CloseMenu();
             GUIUtility.ExitGUI();
         }
 
         GUI.matrix = oldMatrix;
+    }
+
+    private bool DrawToggleButton(Rect rect, string label, bool isVisible)
+    {
+        return GUI.Button(
+            rect,
+            label + (isVisible ? ": ON" : ": OFF"),
+            isVisible ? toggleOnStyle : toggleOffStyle
+        );
+    }
+
+    private void ToggleElement(ref bool field, string preferenceKey, string displayName)
+    {
+        field = !field;
+        SavePreference(preferenceKey, field);
+
+        if (core != null)
+            core.ShowMessage(displayName + (field ? " shown." : " hidden."), 2.5f);
+    }
+
+    private void ResetHudElements()
+    {
+        resourcesPanelVisible = true;
+        playerStatusVisible = true;
+        wavePanelVisible = true;
+        cjPanelVisible = true;
+        equipmentSlotsVisible = true;
+        messagesVisible = true;
+        interactionPromptVisible = true;
+        HudVisible = true;
+
+        SavePreference(HudPreferenceKey, true, false);
+        SavePreference(ResourcesPreferenceKey, true, false);
+        SavePreference(PlayerStatusPreferenceKey, true, false);
+        SavePreference(WavePreferenceKey, true, false);
+        SavePreference(CJPreferenceKey, true, false);
+        SavePreference(EquipmentPreferenceKey, true, false);
+        SavePreference(MessagesPreferenceKey, true, false);
+        SavePreference(PromptPreferenceKey, true, false);
+        PlayerPrefs.Save();
+
+        if (core != null)
+            core.ShowMessage("All HUD elements restored.", 2.5f);
     }
 
     private string BuildControlsText()
@@ -186,7 +328,7 @@ public class RanchSettingsSystem : MonoBehaviour
             "P — Ranch shop\n" +
             "K — Progression\n" +
             "Escape / F1 — Settings\n" +
-            "H — Toggle HUD\n" +
+            "H — Toggle entire HUD\n" +
             "Z — Quick save | X — Quick load";
     }
 
@@ -198,6 +340,8 @@ public class RanchSettingsSystem : MonoBehaviour
         backgroundTexture = MakeTexture(new Color(0.015f, 0.02f, 0.03f, 0.99f));
         cardTexture = MakeTexture(new Color(0.06f, 0.09f, 0.13f, 0.99f));
         buttonTexture = MakeTexture(new Color(0.10f, 0.42f, 0.52f, 1f));
+        toggleOnTexture = MakeTexture(new Color(0.10f, 0.58f, 0.43f, 1f));
+        toggleOffTexture = MakeTexture(new Color(0.19f, 0.22f, 0.25f, 1f));
 
         backgroundStyle = new GUIStyle(GUI.skin.box);
         backgroundStyle.normal.background = backgroundTexture;
@@ -213,9 +357,17 @@ public class RanchSettingsSystem : MonoBehaviour
         };
         titleStyle.normal.textColor = Color.white;
 
+        sectionTitleStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 22,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter
+        };
+        sectionTitleStyle.normal.textColor = Color.white;
+
         bodyStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 19,
+            fontSize = 17,
             wordWrap = true,
             alignment = TextAnchor.UpperLeft
         };
@@ -223,7 +375,7 @@ public class RanchSettingsSystem : MonoBehaviour
 
         buttonStyle = new GUIStyle(GUI.skin.button)
         {
-            fontSize = 19,
+            fontSize = 16,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter
         };
@@ -232,7 +384,30 @@ public class RanchSettingsSystem : MonoBehaviour
         buttonStyle.hover.textColor = Color.white;
         buttonStyle.active.textColor = Color.white;
 
+        toggleOnStyle = new GUIStyle(buttonStyle);
+        toggleOnStyle.normal.background = toggleOnTexture;
+        toggleOnStyle.hover.background = toggleOnTexture;
+        toggleOnStyle.active.background = toggleOnTexture;
+
+        toggleOffStyle = new GUIStyle(buttonStyle);
+        toggleOffStyle.normal.background = toggleOffTexture;
+        toggleOffStyle.hover.background = toggleOffTexture;
+        toggleOffStyle.active.background = toggleOffTexture;
+        toggleOffStyle.normal.textColor = new Color(0.75f, 0.78f, 0.80f, 1f);
+
         stylesReady = true;
+    }
+
+    private static bool LoadPreference(string key)
+    {
+        return PlayerPrefs.GetInt(key, 1) == 1;
+    }
+
+    private static void SavePreference(string key, bool value, bool saveImmediately = true)
+    {
+        PlayerPrefs.SetInt(key, value ? 1 : 0);
+        if (saveImmediately)
+            PlayerPrefs.Save();
     }
 
     private static Texture2D MakeTexture(Color color)

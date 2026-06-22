@@ -37,6 +37,7 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchSettingsSystem settings = GetOrAdd<RanchSettingsSystem>();
         RanchWorldBuilder world = GetOrAdd<RanchWorldBuilder>();
         RanchUI ui = GetOrAdd<RanchUI>();
+        RanchTitleScreen titleScreen = GetOrAdd<RanchTitleScreen>();
 
         core.Initialize(
             inventory,
@@ -76,16 +77,12 @@ public class RanchGameBootstrap : MonoBehaviour
         save.Initialize(core);
         settings.Initialize(core);
         ui.Initialize(core);
+        titleScreen.Initialize(core);
         world.Initialize(core);
         world.BuildWorld();
 
-        bool loaded = save.LoadOnStartup();
-        core.ShowMessage(
-            loaded
-                ? "Save loaded. Press Escape for settings, H for HUD, Z to save, and X to load."
-                : "Welcome to Ranch Simulator. Explore the expanded areas, build your empire, and survive 30 waves.",
-            9f
-        );
+        // The save is loaded only after the player selects Single Player.
+        titleScreen.Open();
     }
 
     private T GetOrAdd<T>() where T : Component
