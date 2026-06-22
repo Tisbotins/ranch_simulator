@@ -312,12 +312,14 @@ public class RanchSettingsSystem : MonoBehaviour
             "WASD — Move\n" +
             "Mouse — Look\n" +
             "Left Control — Dodge\n\n" +
-            "THREE-SLOT INVENTORY\n" +
+            "FOUR-SLOT INVENTORY\n" +
             "1 — Extractor\n" +
             "2 — Equipped weapon\n" +
-            "3 — Extra slot\n\n" +
+            "3 — Ranch Trap\n" +
+            "4 — Delulu Wand\n\n" +
             "COMBAT\n" +
             "Left Click / Space — Light attack\n" +
+            "Left Click / F — Use selected trap or wand\n" +
             "Q — Heavy attack\n" +
             "Right Click — Block / perfect block\n\n" +
             "RANCHING\n" +

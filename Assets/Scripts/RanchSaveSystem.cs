@@ -5,7 +5,7 @@ using UnityEngine;
 [Serializable]
 public class RanchSaveData
 {
-    public int saveVersion = 5;
+    public int saveVersion = 6;
     public float rawRanch;
     public float totalRanchCollected;
     public float money;
@@ -47,6 +47,8 @@ public class RanchSaveData
     public int equippedWeapon;
     public bool spearUnlocked;
     public bool bowUnlocked;
+    public int trapCount;
+    public bool deluluWandUnlocked;
 }
 
 public class RanchSaveSystem : MonoBehaviour
@@ -526,6 +528,12 @@ public class RanchSaveSystem : MonoBehaviour
         data.bowUnlocked =
             core.Equipment.BowUnlocked;
 
+        data.trapCount =
+            core.Deployables.TrapCount;
+
+        data.deluluWandUnlocked =
+            core.Deployables.DeluluWandUnlocked;
+
         Vector3 position =
             core.Player.transform.position;
 
@@ -548,6 +556,7 @@ public class RanchSaveSystem : MonoBehaviour
         RanchSaveData data)
     {
         core.Waves.PrepareForLoad();
+        core.Deployables.PrepareForLoad();
         core.Bosses.ResetBossState();
 
         float restoredTotalRanch =
@@ -630,6 +639,11 @@ public class RanchSaveSystem : MonoBehaviour
             core.Areas.RestoreState(migratedAreas);
             core.Equipment.RestoreState(1, 0, false, false);
         }
+
+        core.Deployables.RestoreState(
+            data.saveVersion >= 6 ? data.trapCount : 0,
+            data.saveVersion >= 6 && data.deluluWandUnlocked
+        );
 
         core.CJ.RestoreState(
             data.cjHasWarned,

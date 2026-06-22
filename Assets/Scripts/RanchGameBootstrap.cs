@@ -25,6 +25,7 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchHealthSystem health = GetOrAdd<RanchHealthSystem>();
         RanchStaminaSystem stamina = GetOrAdd<RanchStaminaSystem>();
         RanchEquipmentSystem equipment = GetOrAdd<RanchEquipmentSystem>();
+        RanchDeployableSystem deployables = GetOrAdd<RanchDeployableSystem>();
         RanchCombatSystem combat = GetOrAdd<RanchCombatSystem>();
         RanchProgressionSystem progression = GetOrAdd<RanchProgressionSystem>();
         RanchAreaSystem areas = GetOrAdd<RanchAreaSystem>();
@@ -47,6 +48,7 @@ public class RanchGameBootstrap : MonoBehaviour
             health,
             stamina,
             equipment,
+            deployables,
             combat,
             progression,
             areas,
@@ -66,6 +68,7 @@ public class RanchGameBootstrap : MonoBehaviour
         health.Initialize(core);
         stamina.Initialize(core);
         equipment.Initialize(core);
+        deployables.Initialize(core);
         combat.Initialize(core);
         progression.Initialize(core);
         areas.Initialize(core);

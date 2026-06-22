@@ -66,10 +66,13 @@ public class RanchCombatSystem : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.LeftControl))
             TryDodge();
 
-        if (!IsBlocking && (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space)))
+        if (weaponReady && !IsBlocking &&
+            (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space)))
+        {
             TryLightAttack();
+        }
 
-        if (!IsBlocking && Input.GetKeyDown(KeyCode.Q))
+        if (weaponReady && !IsBlocking && Input.GetKeyDown(KeyCode.Q))
             TryHeavyAttack();
     }
 

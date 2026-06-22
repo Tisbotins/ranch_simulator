@@ -9,16 +9,18 @@ public enum RanchWeaponType
 
 public class RanchEquipmentSystem : MonoBehaviour
 {
-    public const int SlotCount = 3;
+    public const int SlotCount = 4;
 
     public int ActiveSlot { get; private set; } = 1;
     public RanchWeaponType EquippedWeapon { get; private set; } = RanchWeaponType.Sword;
     public bool SpearUnlocked { get; private set; }
     public bool BowUnlocked { get; private set; }
 
-    public bool WeaponSlotActive => ActiveSlot == 1;
     public bool ExtractorSlotActive => ActiveSlot == 0;
-    public bool ExtraSlotActive => ActiveSlot == 2;
+    public bool WeaponSlotActive => ActiveSlot == 1;
+    public bool TrapSlotActive => ActiveSlot == 2;
+    public bool WandSlotActive => ActiveSlot == 3;
+    public bool ExtraSlotActive => TrapSlotActive;
 
     public string CurrentWeaponName
     {
@@ -123,7 +125,16 @@ public class RanchEquipmentSystem : MonoBehaviour
             case 1:
                 return CurrentWeaponName;
             case 2:
-                return "Empty / Future Extra";
+                return core == null || core.Deployables == null
+                    ? "Ranch Trap"
+                    : "Ranch Trap x" + core.Deployables.TrapCount;
+            case 3:
+                if (core == null || core.Deployables == null)
+                    return "Delulu Wand";
+
+                return core.Deployables.DeluluWandUnlocked
+                    ? "Delulu Wand [" + core.Deployables.ActiveDeluluCount + " active]"
+                    : "Delulu Wand [LOCKED]";
             default:
                 return "Unknown Slot";
         }

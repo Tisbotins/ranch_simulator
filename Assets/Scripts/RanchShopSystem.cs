@@ -733,23 +733,94 @@ public class RanchShopSystem : MonoBehaviour
         float armorCost = core.Health.GetNextArmorCost();
         float regenCost = core.Health.GetNextRegenerationCost();
 
-        DrawCard(new Rect(55f, 220f, 470f, 340f), "MAXIMUM HEALTH",
-            "Current: " + core.Health.MaxHealth.ToString("F0") + " HP\nLevel: " + core.Health.HealthLevel + "/6\n\nMore health gives you room to survive boss combos and later waves.", smallBodyStyle);
-        DrawButton(new Rect(90f, 480f, 400f, 55f), healthCost < 0f ? "HEALTH MAXED" : "UPGRADE — $" + healthCost.ToString("F0"), healthCost >= 0f, core.Health.BuyHealthUpgrade);
+        DrawCard(
+            new Rect(55f, 220f, 470f, 260f),
+            "MAXIMUM HEALTH",
+            "Current: " + core.Health.MaxHealth.ToString("F0") + " HP\nLevel: " + core.Health.HealthLevel + "/6\n\nMore health helps you survive later waves and bosses.",
+            smallBodyStyle
+        );
+        DrawButton(
+            new Rect(90f, 405f, 400f, 52f),
+            healthCost < 0f ? "HEALTH MAXED" : "UPGRADE — $" + healthCost.ToString("F0"),
+            healthCost >= 0f,
+            core.Health.BuyHealthUpgrade
+        );
 
-        DrawCard(new Rect(565f, 220f, 470f, 340f), "ARMOR",
-            "Damage reduction: " + core.Health.ArmorPercent.ToString("F0") + "%\nLevel: " + core.Health.ArmorLevel + "/6\n\nArmor reduces every hit that gets through your block or dodge.", smallBodyStyle);
-        DrawButton(new Rect(600f, 480f, 400f, 55f), armorCost < 0f ? "ARMOR MAXED" : "UPGRADE — $" + armorCost.ToString("F0"), armorCost >= 0f, core.Health.BuyArmorUpgrade);
+        DrawCard(
+            new Rect(565f, 220f, 470f, 260f),
+            "ARMOR",
+            "Damage reduction: " + core.Health.ArmorPercent.ToString("F0") + "%\nLevel: " + core.Health.ArmorLevel + "/6\n\nArmor reduces every hit that gets through blocking or dodging.",
+            smallBodyStyle
+        );
+        DrawButton(
+            new Rect(600f, 405f, 400f, 52f),
+            armorCost < 0f ? "ARMOR MAXED" : "UPGRADE — $" + armorCost.ToString("F0"),
+            armorCost >= 0f,
+            core.Health.BuyArmorUpgrade
+        );
 
-        DrawCard(new Rect(1075f, 220f, 470f, 340f), "REGENERATION",
-            "Current: " + core.Health.RegenerationPerSecond.ToString("0.00") + " HP/sec\nLevel: " + core.Health.RegenerationLevel + "/6\n\nRegeneration restores health between enemy attacks.", smallBodyStyle);
-        DrawButton(new Rect(1110f, 480f, 400f, 55f), regenCost < 0f ? "REGEN MAXED" : "UPGRADE — $" + regenCost.ToString("F0"), regenCost >= 0f, core.Health.BuyRegenerationUpgrade);
+        DrawCard(
+            new Rect(1075f, 220f, 470f, 260f),
+            "REGENERATION",
+            "Current: " + core.Health.RegenerationPerSecond.ToString("0.00") + " HP/sec\nLevel: " + core.Health.RegenerationLevel + "/6\n\nRegeneration restores health between enemy attacks.",
+            smallBodyStyle
+        );
+        DrawButton(
+            new Rect(1110f, 405f, 400f, 52f),
+            regenCost < 0f ? "REGEN MAXED" : "UPGRADE — $" + regenCost.ToString("F0"),
+            regenCost >= 0f,
+            core.Health.BuyRegenerationUpgrade
+        );
 
         float healCost = core.Health.GetFullHealCost();
-        DrawCard(new Rect(55f, 600f, 1490f, 190f), "RANCH MEDICAL BAY",
+        DrawCard(
+            new Rect(55f, 520f, 470f, 270f),
+            "RANCH MEDICAL BAY",
             "Current health: " + core.Health.CurrentHealth.ToString("F0") + " / " + core.Health.MaxHealth.ToString("F0") +
-            "\nBuy a full heal before a difficult wave or the CJ final battle.", smallBodyStyle);
-        DrawButton(new Rect(1030f, 665f, 470f, 58f), healCost <= 0f ? "ALREADY FULL HEALTH" : "FULL HEAL — $" + healCost.ToString("F0"), healCost > 0f, core.Health.BuyFullHeal);
+            "\n\nBuy a full heal before a difficult wave or the CJ final battle.",
+            smallBodyStyle
+        );
+        DrawButton(
+            new Rect(90f, 710f, 400f, 52f),
+            healCost <= 0f ? "ALREADY FULL HEALTH" : "FULL HEAL — $" + healCost.ToString("F0"),
+            healCost > 0f,
+            core.Health.BuyFullHeal
+        );
+
+        DrawCard(
+            new Rect(565f, 520f, 470f, 270f),
+            "RANCH TRAPS — SLOT 3",
+            "Owned: " + core.Deployables.TrapCount +
+            "\nPlaced: " + core.Deployables.ActiveTrapCount +
+            "\n\nPlace with Left Click or F. Traps damage, stun, and knock enemies back. Unused traps expire after 120 seconds.",
+            smallBodyStyle
+        );
+        DrawButton(
+            new Rect(600f, 710f, 400f, 52f),
+            "BUY " + RanchDeployableSystem.TrapPackSize + " TRAPS — $" + RanchDeployableSystem.TrapPackCost.ToString("F0"),
+            true,
+            core.Deployables.BuyTrapPack
+        );
+
+        string wandStatus = core.Deployables.DeluluWandUnlocked
+            ? "UNLOCKED | Active Delulus: " + core.Deployables.ActiveDeluluCount + "/" + RanchDeployableSystem.MaxActiveDelulus
+            : "LOCKED";
+
+        DrawCard(
+            new Rect(1075f, 520f, 470f, 270f),
+            "DELULU WAND — SLOT 4",
+            "Status: " + wandStatus +
+            "\n\nPress 4, then Left Click or F to summon a little Delulu protector. Delulus chase and attack nearby enemies before fading away.",
+            smallBodyStyle
+        );
+        DrawButton(
+            new Rect(1110f, 710f, 400f, 52f),
+            core.Deployables.DeluluWandUnlocked
+                ? "SELECT DELULU WAND"
+                : "UNLOCK WAND — $" + RanchDeployableSystem.DeluluWandCost.ToString("F0"),
+            true,
+            core.Deployables.BuyDeluluWand
+        );
     }
 
     private void DrawAutomationPage()

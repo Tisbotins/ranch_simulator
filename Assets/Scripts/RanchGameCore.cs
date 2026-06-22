@@ -13,6 +13,7 @@ public class RanchGameCore : MonoBehaviour
     public RanchHealthSystem Health { get; private set; }
     public RanchStaminaSystem Stamina { get; private set; }
     public RanchEquipmentSystem Equipment { get; private set; }
+    public RanchDeployableSystem Deployables { get; private set; }
     public RanchCombatSystem Combat { get; private set; }
     public RanchProgressionSystem Progression { get; private set; }
     public RanchAreaSystem Areas { get; private set; }
@@ -55,6 +56,7 @@ public class RanchGameCore : MonoBehaviour
         RanchHealthSystem health,
         RanchStaminaSystem stamina,
         RanchEquipmentSystem equipment,
+        RanchDeployableSystem deployables,
         RanchCombatSystem combat,
         RanchProgressionSystem progression,
         RanchAreaSystem areas,
@@ -73,6 +75,7 @@ public class RanchGameCore : MonoBehaviour
         Health = health;
         Stamina = stamina;
         Equipment = equipment;
+        Deployables = deployables;
         Combat = combat;
         Progression = progression;
         Areas = areas;

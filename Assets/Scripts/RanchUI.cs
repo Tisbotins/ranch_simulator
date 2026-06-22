@@ -118,10 +118,12 @@ public class RanchUI : MonoBehaviour
         text.AppendLine("Tree: " + core.Tree.CurrentStageName);
         text.AppendLine("Empire: " + core.Shop.CurrentStructureName);
         text.AppendLine("Weapon: " + core.Equipment.CurrentWeaponName);
+        text.AppendLine("Traps: " + core.Deployables.TrapCount + " owned | " + core.Deployables.ActiveTrapCount + " placed");
+        text.AppendLine("Active Delulus: " + core.Deployables.ActiveDeluluCount + "/" + RanchDeployableSystem.MaxActiveDelulus);
         text.AppendLine("CJ Heat: " + core.CJHeat + " — " + core.CJ.GetHeatStatus());
         text.AppendLine("Save: " + core.Save.LastSaveStatus);
 
-        DrawPanel(new Rect(20f, 20f, 390f, 420f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
+        DrawPanel(new Rect(20f, 20f, 420f, 465f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
     }
 
     private void DrawHealthAndStamina()
@@ -228,9 +230,9 @@ public class RanchUI : MonoBehaviour
 
     private void DrawEquipmentSlots()
     {
-        float slotWidth = 250f;
-        float gap = 18f;
-        float totalWidth = slotWidth * 3f + gap * 2f;
+        float slotWidth = 215f;
+        float gap = 16f;
+        float totalWidth = slotWidth * RanchEquipmentSystem.SlotCount + gap * (RanchEquipmentSystem.SlotCount - 1);
         float startX = (VirtualWidth - totalWidth) * 0.5f;
         float y = 745f;
 

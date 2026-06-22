@@ -68,6 +68,7 @@ public class RanchPlayerController : MonoBehaviour
         HandleMovement();
         UpdateCamera();
         HandleBottleSelection();
+        HandleDeployables();
         HandleInteraction();
         UpdateWeaponAnimation();
         UpdateSafetyPosition();
@@ -238,6 +239,8 @@ public class RanchPlayerController : MonoBehaviour
             core.Equipment.SelectSlot(1);
         if (Input.GetKeyDown(KeyCode.Alpha3))
             core.Equipment.SelectSlot(2);
+        if (Input.GetKeyDown(KeyCode.Alpha4))
+            core.Equipment.SelectSlot(3);
     }
 
     private void HandleBottleSelection()
@@ -246,6 +249,26 @@ public class RanchPlayerController : MonoBehaviour
             core.Bottles.CycleSelection(-1);
         if (Input.GetKeyDown(KeyCode.RightBracket))
             core.Bottles.CycleSelection(1);
+    }
+
+
+    private void HandleDeployables()
+    {
+        if (core.Deployables == null)
+            return;
+
+        bool deployPressed =
+            Input.GetMouseButtonDown(0) ||
+            Input.GetKeyDown(KeyCode.F);
+
+        if (!deployPressed)
+            return;
+
+        if (core.Equipment.TrapSlotActive ||
+            core.Equipment.WandSlotActive)
+        {
+            core.Deployables.UseSelectedDeployable(transform);
+        }
     }
 
     private void HandleInteraction()
