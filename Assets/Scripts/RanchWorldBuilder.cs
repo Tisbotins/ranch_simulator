@@ -312,6 +312,8 @@ public class RanchWorldBuilder : MonoBehaviour
 
     private RanchPlayerController CreatePlayer(Transform parent)
     {
+        // The Player root remains the real gameplay object. Movement, collision,
+        // combat, saving, and the camera all continue to use this object.
         GameObject player = new GameObject("Player");
         player.transform.SetParent(parent);
         player.transform.position = new Vector3(0f, 1.1f, -10f);
@@ -323,22 +325,71 @@ public class RanchWorldBuilder : MonoBehaviour
         controller.skinWidth = 0.08f;
         controller.stepOffset = 0.35f;
 
-        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        body.name = "Player Body";
-        body.transform.SetParent(player.transform, false);
-        body.GetComponent<Renderer>().material = blue;
-        Collider bodyCollider = body.GetComponent<Collider>();
-        if (bodyCollider != null)
-            Destroy(bodyCollider);
+        // Load the editable wrapper prefab from:
+        // Assets/Resources/Prefabs/PlayerModel.prefab
+        GameObject playerPrefab = Resources.Load<GameObject>("Prefabs/PlayerModel");
+        GameObject playerModel = null;
 
-        GameObject handAnchor = new GameObject("Right Hand Equipment Anchor");
-        handAnchor.transform.SetParent(player.transform, false);
-        handAnchor.transform.localPosition = new Vector3(0.72f, 0.05f, 0.05f);
+        if (playerPrefab != null)
+        {
+            playerModel = Instantiate(playerPrefab, player.transform);
+            playerModel.name = "Player Character Model";
+            playerModel.transform.localPosition = Vector3.zero;
+            playerModel.transform.localRotation = Quaternion.identity;
 
-        Transform sword = CreateSword(handAnchor.transform);
-        Transform spear = CreateSpear(handAnchor.transform);
-        Transform bow = CreateBow(handAnchor.transform);
-        Transform extractor = CreateExtractor(handAnchor.transform);
+            // Preserve the position, rotation, and scale saved inside the prefab.
+            // Adjust the imported model child inside PlayerModel.prefab if needed.
+            CleanImportedCharacterModel(playerModel);
+
+            Debug.Log(
+                "Player custom model loaded from " +
+                "Resources/Prefabs/PlayerModel."
+            );
+        }
+        else
+        {
+            Debug.LogWarning(
+                "PlayerModel.prefab was not found. Expected path: " +
+                "Assets/Resources/Prefabs/PlayerModel.prefab"
+            );
+
+            // Keep the original capsule as a visible fallback when the custom
+            // player prefab has not been created yet.
+            GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            body.name = "Fallback Player Body";
+            body.transform.SetParent(player.transform, false);
+            body.GetComponent<Renderer>().material = blue;
+
+            Collider bodyCollider = body.GetComponent<Collider>();
+            if (bodyCollider != null)
+                Destroy(bodyCollider);
+        }
+
+        // A PlayerModel prefab may optionally contain an object named
+        // RightHandAnchor. Put it under the correct hand bone if you want the
+        // generated equipment to follow that hand. Otherwise the old fallback
+        // anchor is created on the Player root.
+        Transform handAnchor =
+            playerModel != null
+                ? FindChildRecursive(playerModel.transform, "RightHandAnchor")
+                : null;
+
+        if (handAnchor == null)
+        {
+            GameObject handAnchorObject =
+                new GameObject("Right Hand Equipment Anchor");
+
+            handAnchorObject.transform.SetParent(player.transform, false);
+            handAnchorObject.transform.localPosition =
+                new Vector3(0.72f, 0.05f, 0.05f);
+
+            handAnchor = handAnchorObject.transform;
+        }
+
+        Transform sword = CreateSword(handAnchor);
+        Transform spear = CreateSpear(handAnchor);
+        Transform bow = CreateBow(handAnchor);
+        Transform extractor = CreateExtractor(handAnchor);
 
         Camera camera = Camera.main;
         if (camera == null)
@@ -348,10 +399,92 @@ public class RanchWorldBuilder : MonoBehaviour
             cameraObject.tag = "MainCamera";
         }
 
-        RanchPlayerController playerController = player.AddComponent<RanchPlayerController>();
+        RanchPlayerController playerController =
+            player.AddComponent<RanchPlayerController>();
+
         playerController.Initialize(core, controller, camera);
         core.Equipment.RegisterVisuals(extractor, sword, spear, bow);
         return playerController;
+    }
+
+    private void CleanImportedCharacterModel(GameObject modelRoot)
+    {
+        // Imported cameras and listeners can take over the gameplay view/audio.
+        Camera[] importedCameras =
+            modelRoot.GetComponentsInChildren<Camera>(true);
+
+        foreach (Camera importedCamera in importedCameras)
+        {
+            importedCamera.enabled = false;
+            Destroy(importedCamera);
+        }
+
+        AudioListener[] importedListeners =
+            modelRoot.GetComponentsInChildren<AudioListener>(true);
+
+        foreach (AudioListener importedListener in importedListeners)
+        {
+            importedListener.enabled = false;
+            Destroy(importedListener);
+        }
+
+        Light[] importedLights =
+            modelRoot.GetComponentsInChildren<Light>(true);
+
+        foreach (Light importedLight in importedLights)
+        {
+            importedLight.enabled = false;
+            Destroy(importedLight);
+        }
+
+        // The Player root's CharacterController is the only gameplay collider.
+        // Extra model colliders or rigidbodies can make movement jitter or fail.
+        Collider[] importedColliders =
+            modelRoot.GetComponentsInChildren<Collider>(true);
+
+        foreach (Collider importedCollider in importedColliders)
+        {
+            importedCollider.enabled = false;
+            Destroy(importedCollider);
+        }
+
+        Rigidbody[] importedRigidbodies =
+            modelRoot.GetComponentsInChildren<Rigidbody>(true);
+
+        foreach (Rigidbody importedRigidbody in importedRigidbodies)
+        {
+            importedRigidbody.isKinematic = true;
+            importedRigidbody.detectCollisions = false;
+            Destroy(importedRigidbody);
+        }
+
+        // Prevent an imported object from being mistaken for MainCamera or
+        // another tagged gameplay object. Animators and renderers are retained.
+        Transform[] importedObjects =
+            modelRoot.GetComponentsInChildren<Transform>(true);
+
+        foreach (Transform importedObject in importedObjects)
+            importedObject.gameObject.tag = "Untagged";
+    }
+
+    private Transform FindChildRecursive(Transform root, string childName)
+    {
+        if (root == null)
+            return null;
+
+        if (root.name == childName)
+            return root;
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform result =
+                FindChildRecursive(root.GetChild(i), childName);
+
+            if (result != null)
+                return result;
+        }
+
+        return null;
     }
 
     private Transform CreateSword(Transform anchor)
