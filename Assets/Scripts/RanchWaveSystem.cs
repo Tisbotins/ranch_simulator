@@ -16,8 +16,8 @@ public class RanchWaveSystem : MonoBehaviour
     public int CurrentWave { get; private set; }
     public int HighestWaveCleared { get; private set; }
     public WaveState CurrentState { get; private set; }
-    public float FirstWaveDelay = 120f;
-    public float IntermissionDuration = 120f;
+    public float FirstWaveDelay = 60f;
+    public float IntermissionDuration = 60f;
     public float EnemySpawnDelay = 0.75f;
     public int MaximumEnemiesPerWave = 30;
 
