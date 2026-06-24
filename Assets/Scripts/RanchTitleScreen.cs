@@ -1,28 +1,39 @@
 using UnityEngine;
 
 /// <summary>
-/// Runtime-generated title screen. RanchGameBootstrap adds this automatically,
-/// so no extra scene objects or components are required.
+/// Runtime-generated title screen with separate Single Player and LAN
+/// Multiplayer modes. RanchGameBootstrap adds it automatically.
 /// </summary>
 [DefaultExecutionOrder(9000)]
 [DisallowMultipleComponent]
 public class RanchTitleScreen : MonoBehaviour
 {
+    private enum MenuPage
+    {
+        Main,
+        Multiplayer
+    }
+
     private const float VirtualWidth = 1600f;
     private const float VirtualHeight = 900f;
 
     public bool IsOpen { get; private set; }
 
     private RanchGameCore core;
+    private RanchLanMultiplayer multiplayer;
     private float previousTimeScale = 1f;
     private bool startingGame;
+    private MenuPage page;
+    private string joinAddress = "127.0.0.1";
+    private string menuStatus = "";
 
     private Texture2D backgroundTexture;
     private Texture2D cardTexture;
     private Texture2D accentTexture;
     private Texture2D accentHoverTexture;
     private Texture2D accentActiveTexture;
-    private Texture2D disabledTexture;
+    private Texture2D secondaryTexture;
+    private Texture2D secondaryHoverTexture;
     private Texture2D lineTexture;
 
     private GUIStyle backgroundStyle;
@@ -30,15 +41,19 @@ public class RanchTitleScreen : MonoBehaviour
     private GUIStyle titleStyle;
     private GUIStyle subtitleStyle;
     private GUIStyle primaryButtonStyle;
-    private GUIStyle disabledButtonStyle;
-    private GUIStyle comingSoonStyle;
+    private GUIStyle secondaryButtonStyle;
     private GUIStyle statusStyle;
     private GUIStyle footerStyle;
+    private GUIStyle fieldStyle;
+    private GUIStyle fieldLabelStyle;
     private bool stylesReady;
 
-    public void Initialize(RanchGameCore gameCore)
+    public void Initialize(
+        RanchGameCore gameCore,
+        RanchLanMultiplayer lanMultiplayer)
     {
         core = gameCore;
+        multiplayer = lanMultiplayer;
     }
 
     public void Open()
@@ -46,8 +61,11 @@ public class RanchTitleScreen : MonoBehaviour
         if (core == null || IsOpen)
             return;
 
+        RanchGameModeState.ResetToTitle();
         IsOpen = true;
         startingGame = false;
+        page = MenuPage.Main;
+        menuStatus = "";
         previousTimeScale = Time.timeScale <= 0f ? 1f : Time.timeScale;
         HoldGameAtTitle();
     }
@@ -57,11 +75,18 @@ public class RanchTitleScreen : MonoBehaviour
         if (!IsOpen)
             return;
 
-        // Enter is a keyboard shortcut for the Single Player button.
-        if (Input.GetKeyDown(KeyCode.Return) ||
-            Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (page == MenuPage.Main &&
+            (Input.GetKeyDown(KeyCode.Return) ||
+             Input.GetKeyDown(KeyCode.KeypadEnter)))
         {
             BeginSinglePlayer();
+        }
+
+        if (page == MenuPage.Multiplayer &&
+            Input.GetKeyDown(KeyCode.Escape))
+        {
+            page = MenuPage.Main;
+            menuStatus = "";
         }
     }
 
@@ -76,8 +101,6 @@ public class RanchTitleScreen : MonoBehaviour
         if (core == null)
             return;
 
-        // Close any gameplay menus that may have received a key press
-        // while the title screen was open.
         if (core.Settings != null && core.Settings.IsOpen)
             core.Settings.CloseMenu();
 
@@ -104,14 +127,66 @@ public class RanchTitleScreen : MonoBehaviour
 
     public void BeginSinglePlayer()
     {
-        if (!IsOpen || startingGame || core == null)
+        if (!CanStart())
             return;
 
         startingGame = true;
+        RanchGameModeState.SetMode(RanchGameMode.SinglePlayer);
 
-        // Loading happens only after the player chooses Single Player.
+        bool loaded = core.Save != null && core.Save.LoadOnStartup();
+        EnterGame(
+            loaded
+                ? "Save loaded. Press Escape for settings, H for HUD, Z to save, and X to load."
+                : "Welcome to Ranch Simulator. Build your empire, unlock new areas, and survive 30 waves."
+        );
+    }
+
+    private void BeginLanHost()
+    {
+        if (!CanStart())
+            return;
+
+        if (multiplayer == null || !multiplayer.StartHost())
+        {
+            menuStatus = "Could not start the LAN host.";
+            return;
+        }
+
+        startingGame = true;
         bool loaded = core.Save != null && core.Save.LoadOnStartup();
 
+        EnterGame(
+            (loaded ? "Host save loaded. " : "New host ranch started. ") +
+            "Give your friend the LAN address shown in the top-right corner."
+        );
+    }
+
+    private void BeginLanClient()
+    {
+        if (!CanStart())
+            return;
+
+        if (multiplayer == null || !multiplayer.StartClient(joinAddress))
+        {
+            menuStatus = multiplayer != null
+                ? multiplayer.StatusText
+                : "LAN multiplayer system is missing.";
+            return;
+        }
+
+        startingGame = true;
+        EnterGame(
+            "Connecting as a LAN guest. The host controls the ranch and save file."
+        );
+    }
+
+    private bool CanStart()
+    {
+        return IsOpen && !startingGame && core != null;
+    }
+
+    private void EnterGame(string message)
+    {
         IsOpen = false;
         Time.timeScale = previousTimeScale <= 0f ? 1f : previousTimeScale;
 
@@ -125,13 +200,7 @@ public class RanchTitleScreen : MonoBehaviour
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
-
-        core.ShowMessage(
-            loaded
-                ? "Save loaded. Press Escape for settings, H for HUD, Z to save, and X to load."
-                : "Welcome to Ranch Simulator. Build your empire, unlock new areas, and survive 30 waves.",
-            9f
-        );
+        core.ShowMessage(message, 10f);
     }
 
     private void OnGUI()
@@ -143,8 +212,6 @@ public class RanchTitleScreen : MonoBehaviour
 
         int oldDepth = GUI.depth;
         Matrix4x4 oldMatrix = GUI.matrix;
-
-        // Lower GUI depth draws this screen above the other runtime UI.
         GUI.depth = -1000;
 
         float scale = Mathf.Min(
@@ -172,29 +239,39 @@ public class RanchTitleScreen : MonoBehaviour
             new Rect(0f, 0f, VirtualWidth, 12f),
             lineTexture
         );
-
         GUI.DrawTexture(
             new Rect(0f, VirtualHeight - 12f, VirtualWidth, 12f),
             lineTexture
         );
 
         GUI.Label(
-            new Rect(180f, 110f, 1240f, 110f),
+            new Rect(180f, 90f, 1240f, 110f),
             "RANCH SIMULATOR",
             titleStyle
         );
 
         GUI.Label(
-            new Rect(250f, 215f, 1100f, 48f),
+            new Rect(250f, 195f, 1100f, 48f),
             "BUILD  •  BOTTLE  •  DEFEND",
             subtitleStyle
         );
 
-        Rect card = new Rect(455f, 305f, 690f, 440f);
+        if (page == MenuPage.Main)
+            DrawMainMenu();
+        else
+            DrawMultiplayerMenu();
+
+        GUI.matrix = oldMatrix;
+        GUI.depth = oldDepth;
+    }
+
+    private void DrawMainMenu()
+    {
+        Rect card = new Rect(455f, 285f, 690f, 455f);
         GUI.Box(card, GUIContent.none, cardStyle);
 
         if (GUI.Button(
-            new Rect(570f, 385f, 460f, 82f),
+            new Rect(570f, 365f, 460f, 82f),
             "SINGLE PLAYER",
             primaryButtonStyle))
         {
@@ -202,25 +279,23 @@ public class RanchTitleScreen : MonoBehaviour
             GUIUtility.ExitGUI();
         }
 
-        GUI.Box(
-            new Rect(570f, 505f, 460f, 82f),
-            "MULTIPLAYER",
-            disabledButtonStyle
-        );
-
-        GUI.Label(
-            new Rect(570f, 588f, 460f, 40f),
-            "COMING SOON",
-            comingSoonStyle
-        );
+        if (GUI.Button(
+            new Rect(570f, 485f, 460f, 82f),
+            "MULTIPLAYER — LAN",
+            secondaryButtonStyle))
+        {
+            page = MenuPage.Multiplayer;
+            menuStatus = "";
+            GUIUtility.ExitGUI();
+        }
 
         string saveText =
             core.Save != null && core.Save.HasSaveFile
-                ? "Single Player will continue your saved ranch."
-                : "Single Player will begin a new ranch.";
+                ? "Single Player or Host LAN can continue your saved ranch."
+                : "Single Player or Host LAN will begin a new ranch.";
 
         GUI.Label(
-            new Rect(535f, 660f, 530f, 42f),
+            new Rect(535f, 625f, 530f, 45f),
             saveText,
             statusStyle
         );
@@ -230,9 +305,83 @@ public class RanchTitleScreen : MonoBehaviour
             "Press Enter to start Single Player",
             footerStyle
         );
+    }
 
-        GUI.matrix = oldMatrix;
-        GUI.depth = oldDepth;
+    private void DrawMultiplayerMenu()
+    {
+        Rect card = new Rect(390f, 270f, 820f, 500f);
+        GUI.Box(card, GUIContent.none, cardStyle);
+
+        GUI.Label(
+            new Rect(485f, 300f, 630f, 44f),
+            "TWO-PLAYER LAN EXPERIMENT",
+            subtitleStyle
+        );
+
+        if (GUI.Button(
+            new Rect(520f, 370f, 560f, 72f),
+            "HOST LAN RANCH",
+            primaryButtonStyle))
+        {
+            BeginLanHost();
+            GUIUtility.ExitGUI();
+        }
+
+        string hostAddress = multiplayer != null
+            ? multiplayer.LocalAddress + ":" + multiplayer.Port
+            : "Unavailable";
+
+        GUI.Label(
+            new Rect(520f, 448f, 560f, 34f),
+            "Your host address: " + hostAddress,
+            statusStyle
+        );
+
+        GUI.Label(
+            new Rect(520f, 505f, 200f, 35f),
+            "HOST IPv4 ADDRESS",
+            fieldLabelStyle
+        );
+
+        joinAddress = GUI.TextField(
+            new Rect(720f, 498f, 360f, 46f),
+            joinAddress,
+            45,
+            fieldStyle
+        );
+
+        if (GUI.Button(
+            new Rect(520f, 565f, 560f, 72f),
+            "JOIN LAN RANCH",
+            primaryButtonStyle))
+        {
+            BeginLanClient();
+            GUIUtility.ExitGUI();
+        }
+
+        if (GUI.Button(
+            new Rect(520f, 660f, 270f, 58f),
+            "BACK",
+            secondaryButtonStyle))
+        {
+            page = MenuPage.Main;
+            menuStatus = "";
+            GUIUtility.ExitGUI();
+        }
+
+        GUI.Label(
+            new Rect(800f, 655f, 280f, 68f),
+            string.IsNullOrEmpty(menuStatus)
+                ? "Both laptops must be on the same LAN."
+                : menuStatus,
+            statusStyle
+        );
+
+        GUI.Label(
+            new Rect(330f, 805f, 940f, 42f),
+            "Host runs the ranch and save. Guest movement, enemy views, and basic attacks are synchronized.",
+            footerStyle
+        );
     }
 
     private void EnsureStyles()
@@ -243,27 +392,24 @@ public class RanchTitleScreen : MonoBehaviour
         backgroundTexture = MakeTexture(
             new Color(0.012f, 0.018f, 0.025f, 1f)
         );
-
         cardTexture = MakeTexture(
             new Color(0.035f, 0.065f, 0.075f, 0.98f)
         );
-
         accentTexture = MakeTexture(
             new Color(0.10f, 0.58f, 0.43f, 1f)
         );
-
         accentHoverTexture = MakeTexture(
             new Color(0.14f, 0.72f, 0.52f, 1f)
         );
-
         accentActiveTexture = MakeTexture(
             new Color(0.07f, 0.44f, 0.33f, 1f)
         );
-
-        disabledTexture = MakeTexture(
-            new Color(0.15f, 0.18f, 0.20f, 1f)
+        secondaryTexture = MakeTexture(
+            new Color(0.13f, 0.20f, 0.23f, 1f)
         );
-
+        secondaryHoverTexture = MakeTexture(
+            new Color(0.18f, 0.29f, 0.32f, 1f)
+        );
         lineTexture = MakeTexture(
             new Color(0.10f, 0.58f, 0.43f, 1f)
         );
@@ -293,7 +439,7 @@ public class RanchTitleScreen : MonoBehaviour
 
         primaryButtonStyle = new GUIStyle(GUI.skin.button)
         {
-            fontSize = 29,
+            fontSize = 27,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter
         };
@@ -304,29 +450,24 @@ public class RanchTitleScreen : MonoBehaviour
         primaryButtonStyle.hover.textColor = Color.white;
         primaryButtonStyle.active.textColor = Color.white;
 
-        disabledButtonStyle = new GUIStyle(GUI.skin.box)
+        secondaryButtonStyle = new GUIStyle(GUI.skin.button)
         {
-            fontSize = 27,
+            fontSize = 24,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter
         };
-        disabledButtonStyle.normal.background = disabledTexture;
-        disabledButtonStyle.normal.textColor =
-            new Color(0.56f, 0.60f, 0.62f, 1f);
-
-        comingSoonStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 18,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
-        comingSoonStyle.normal.textColor =
-            new Color(0.55f, 0.90f, 0.75f, 1f);
+        secondaryButtonStyle.normal.background = secondaryTexture;
+        secondaryButtonStyle.hover.background = secondaryHoverTexture;
+        secondaryButtonStyle.active.background = secondaryTexture;
+        secondaryButtonStyle.normal.textColor = Color.white;
+        secondaryButtonStyle.hover.textColor = Color.white;
+        secondaryButtonStyle.active.textColor = Color.white;
 
         statusStyle = new GUIStyle(GUI.skin.label)
         {
             fontSize = 17,
-            alignment = TextAnchor.MiddleCenter
+            alignment = TextAnchor.MiddleCenter,
+            wordWrap = true
         };
         statusStyle.normal.textColor =
             new Color(0.78f, 0.82f, 0.84f, 1f);
@@ -334,10 +475,25 @@ public class RanchTitleScreen : MonoBehaviour
         footerStyle = new GUIStyle(GUI.skin.label)
         {
             fontSize = 16,
-            alignment = TextAnchor.MiddleCenter
+            alignment = TextAnchor.MiddleCenter,
+            wordWrap = true
         };
         footerStyle.normal.textColor =
             new Color(0.55f, 0.60f, 0.63f, 1f);
+
+        fieldStyle = new GUIStyle(GUI.skin.textField)
+        {
+            fontSize = 21,
+            alignment = TextAnchor.MiddleLeft
+        };
+
+        fieldLabelStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 15,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft
+        };
+        fieldLabelStyle.normal.textColor = Color.white;
 
         stylesReady = true;
     }

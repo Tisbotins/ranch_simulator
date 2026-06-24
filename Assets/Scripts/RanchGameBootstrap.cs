@@ -40,6 +40,7 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchSettingsSystem settings = GetOrAdd<RanchSettingsSystem>();
         RanchWorldBuilder world = GetOrAdd<RanchWorldBuilder>();
         RanchUI ui = GetOrAdd<RanchUI>();
+        RanchLanMultiplayer multiplayer = GetOrAdd<RanchLanMultiplayer>();
         RanchTitleScreen titleScreen = GetOrAdd<RanchTitleScreen>();
 
         core.Initialize(
@@ -86,7 +87,8 @@ public class RanchGameBootstrap : MonoBehaviour
         save.Initialize(core);
         settings.Initialize(core);
         ui.Initialize(core);
-        titleScreen.Initialize(core);
+        multiplayer.Initialize(core);
+        titleScreen.Initialize(core, multiplayer);
         world.Initialize(core);
         world.BuildWorld();
         classes.BuildWorldObjects();
