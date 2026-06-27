@@ -9,31 +9,55 @@ using System.Threading;
 using UnityEngine;
 
 /// <summary>
-/// A dependency-free two-player LAN / direct-online experiment.
+/// A dependency-free two-player LAN / online experiment.
 ///
 /// The host remains authoritative for the ranch, waves, enemies, rewards,
 /// and save file. The guest can move around, see the host and host enemies,
 /// and make basic networked melee attacks against those enemies.
 ///
 /// This is intentionally a learning prototype rather than production
-/// matchmaking/netcode. It uses one TCP connection. Direct-online play needs
-/// the host's router/firewall to forward the game port to the host machine.
+/// matchmaking/netcode. Direct-online play needs a forwarded host port.
+/// Relay play avoids port forwarding because both players connect outward to
+/// the same public relay.
 /// </summary>
 [DefaultExecutionOrder(-850)]
 [DisallowMultipleComponent]
 public class RanchLanMultiplayer : MonoBehaviour
 {
     public const int DefaultPort = 7777;
+    public const int DefaultRelayPort = 7778;
+
+    private enum TransportMode
+    {
+        Lan,
+        DirectOnline,
+        Relay
+    }
 
     public bool IsConnected => connected;
     public string StatusText => statusText;
     public string LocalAddress => localAddress;
-    public string SessionLabel => onlineDirectMode ? "ONLINE DIRECT" : "LAN";
+    public string SessionLabel
+    {
+        get
+        {
+            if (transportMode == TransportMode.Relay)
+                return "ONLINE RELAY";
+
+            return transportMode == TransportMode.DirectOnline
+                ? "ONLINE DIRECT"
+                : "LAN";
+        }
+    }
+
     public string HostAddressHelp =>
-        onlineDirectMode
+        transportMode == TransportMode.Relay
+            ? "Share the relay address and room code."
+            : transportMode == TransportMode.DirectOnline
             ? "Share your public IP or DNS name with port " + DefaultPort + "."
             : "Share this local address with another device on your LAN.";
     public int Port => DefaultPort;
+    public int RelayPort => DefaultRelayPort;
 
     private const float PlayerSendInterval = 0.05f;
     private const float EnemySendInterval = 0.10f;
@@ -108,7 +132,7 @@ public class RanchLanMultiplayer : MonoBehaviour
     private volatile bool connected;
     private volatile string statusText = "LAN multiplayer inactive";
     private string localAddress = "Unknown";
-    private bool onlineDirectMode;
+    private TransportMode transportMode = TransportMode.Lan;
 
     private GameObject remotePlayer;
     private Vector3 remotePlayerTargetPosition;
@@ -154,16 +178,18 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         ShutdownConnection(false);
         RanchGameModeState.SetMode(RanchGameMode.LanHost);
-        onlineDirectMode = onlineDirect;
+        transportMode = onlineDirect
+            ? TransportMode.DirectOnline
+            : TransportMode.Lan;
 
         stopRequested = false;
         connected = false;
         statusText =
-            (onlineDirectMode
+            (transportMode == TransportMode.DirectOnline
                 ? "Direct-online host listening on port "
                 : "Hosting on " + localAddress + ":") +
             DefaultPort +
-            (onlineDirectMode
+            (transportMode == TransportMode.DirectOnline
                 ? " — forward this port to this computer"
                 : " — waiting for one guest");
 
@@ -174,6 +200,11 @@ public class RanchLanMultiplayer : MonoBehaviour
         };
         listenerThread.Start();
         return true;
+    }
+
+    public bool StartRelayHost(string relayAddress, string roomCode)
+    {
+        return StartRelaySession(relayAddress, roomCode, true);
     }
 
     public bool StartClient(string hostAddress)
@@ -206,7 +237,9 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         ShutdownConnection(false);
         RanchGameModeState.SetMode(RanchGameMode.LanClient);
-        onlineDirectMode = onlineDirect;
+        transportMode = onlineDirect
+            ? TransportMode.DirectOnline
+            : TransportMode.Lan;
 
         stopRequested = false;
         connected = false;
@@ -225,11 +258,85 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
 
         Thread connectThread = new Thread(
-            () => ClientConnectLoop(address, port)
+            () => ClientConnectLoop(
+                address,
+                port,
+                null,
+                "Connected to " + SessionLabel + " host " +
+                address + ":" + port
+            )
         )
         {
             IsBackground = true,
             Name = "Ranch " + SessionLabel + " Client Connector"
+        };
+        connectThread.Start();
+        return true;
+    }
+
+    public bool StartRelayClient(string relayAddress, string roomCode)
+    {
+        return StartRelaySession(relayAddress, roomCode, false);
+    }
+
+    private bool StartRelaySession(
+        string relayAddress,
+        string roomCode,
+        bool host)
+    {
+        if (core == null)
+            return false;
+
+        string cleanedRoom = CleanRoomCode(roomCode);
+        if (cleanedRoom.Length == 0)
+        {
+            statusText = "Enter a relay room code.";
+            return false;
+        }
+
+        if (!TryParseEndpoint(relayAddress, out string address, out int port))
+        {
+            statusText = "Enter a relay address like relay.example.com:7778.";
+            return false;
+        }
+
+        ShutdownConnection(false);
+        RanchGameModeState.SetMode(
+            host ? RanchGameMode.LanHost : RanchGameMode.LanClient
+        );
+        transportMode = TransportMode.Relay;
+
+        stopRequested = false;
+        connected = false;
+        statusText =
+            "Connecting to relay " + address + ":" + port +
+            " room " + cleanedRoom + "...";
+
+        if (!host && core.Player != null)
+        {
+            Vector3 guestSpawn =
+                core.Player.transform.position + Vector3.right * 3f;
+
+            core.Player.Teleport(
+                guestSpawn,
+                core.Player.transform.eulerAngles.y
+            );
+        }
+
+        string role = host ? "host" : "guest";
+        string handshake = "__ranch_relay|" + role + "|" + cleanedRoom;
+        string connectedText =
+            (host
+                ? "Relay host ready in room "
+                : "Connected to relay room ") +
+            cleanedRoom;
+
+        Thread connectThread = new Thread(
+            () => ClientConnectLoop(address, port, handshake, connectedText)
+        )
+        {
+            IsBackground = true,
+            Name = "Ranch " + SessionLabel + " Connector"
         };
         connectThread.Start();
         return true;
@@ -300,7 +407,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         SetEnabled(core.Upgrades, false);
 
         core.ShowMessage(
-            "Joined as LAN guest. The host owns the ranch, waves, rewards, and save. You can move and help attack enemies.",
+            "Joined as " + SessionLabel + " guest. The host owns the ranch, waves, rewards, and save. You can move and help attack enemies.",
             10f
         );
     }
@@ -849,7 +956,7 @@ public class RanchLanMultiplayer : MonoBehaviour
             }
 
             listener.Stop();
-            ConfigureConnection(accepted);
+            ConfigureConnection(accepted, null);
             statusText = SessionLabel + " guest connected";
         }
         catch (Exception exception)
@@ -859,7 +966,11 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
     }
 
-    private void ClientConnectLoop(string hostAddress, int port)
+    private void ClientConnectLoop(
+        string hostAddress,
+        int port,
+        string firstLine,
+        string connectedText)
     {
         try
         {
@@ -873,10 +984,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                 return;
             }
 
-            ConfigureConnection(connectingClient);
-            statusText =
-                "Connected to " + SessionLabel + " host " +
-                hostAddress + ":" + port;
+            ConfigureConnection(connectingClient, firstLine);
+            statusText = connectedText;
         }
         catch (Exception exception)
         {
@@ -885,7 +994,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
     }
 
-    private void ConfigureConnection(TcpClient connection)
+    private void ConfigureConnection(TcpClient connection, string firstLine)
     {
         lock (connectionLock)
         {
@@ -909,6 +1018,9 @@ public class RanchLanMultiplayer : MonoBehaviour
             {
                 AutoFlush = true
             };
+
+            if (!string.IsNullOrEmpty(firstLine))
+                writer.WriteLine(firstLine);
         }
 
         connected = true;
@@ -939,8 +1051,16 @@ public class RanchLanMultiplayer : MonoBehaviour
                 if (line == null)
                     break;
 
-                if (line.Length > 0)
+                if (line.StartsWith(
+                    "__ranch_relay|",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    ProcessRelayControl(line);
+                }
+                else if (line.Length > 0)
+                {
                     incoming.Enqueue(line);
+                }
             }
         }
         catch (Exception exception)
@@ -951,6 +1071,22 @@ public class RanchLanMultiplayer : MonoBehaviour
         finally
         {
             MarkDisconnected();
+        }
+    }
+
+    private void ProcessRelayControl(string line)
+    {
+        if (line.IndexOf("|paired", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            statusText = "Relay peer connected";
+        }
+        else if (line.IndexOf("|waiting", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            statusText = "Connected to relay. Waiting for the other player.";
+        }
+        else if (line.IndexOf("|room_full", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            statusText = "Relay room is full. Pick another room code.";
         }
     }
 
@@ -1076,8 +1212,10 @@ public class RanchLanMultiplayer : MonoBehaviour
             body =
                 statusText + "\n" +
                 "Address: " + localAddress + ":" + DefaultPort + "\n" +
-                (onlineDirectMode
+                (transportMode == TransportMode.DirectOnline
                     ? "Forward TCP " + DefaultPort + " to this computer."
+                    : transportMode == TransportMode.Relay
+                    ? "No port forwarding. Relay carries the connection."
                     : "Host owns the ranch and save file.");
         }
         else
@@ -1208,5 +1346,27 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         address = cleaned.Trim();
         return address.Length > 0;
+    }
+
+    private static string CleanRoomCode(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        string cleaned = value.Trim().ToUpperInvariant();
+        StringBuilder builder = new StringBuilder(cleaned.Length);
+        for (int i = 0; i < cleaned.Length; i++)
+        {
+            char c = cleaned[i];
+            if ((c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') ||
+                c == '-' ||
+                c == '_')
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
     }
 }

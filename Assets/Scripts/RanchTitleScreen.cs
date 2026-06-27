@@ -1,8 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Runtime-generated title screen with Single Player, LAN, and direct-online
-/// multiplayer modes. RanchGameBootstrap adds it automatically.
+/// Runtime-generated title screen with Single Player, LAN, direct-online, and
+/// relay-online multiplayer modes. RanchGameBootstrap adds it automatically.
 /// </summary>
 [DefaultExecutionOrder(9000)]
 [DisallowMultipleComponent]
@@ -16,6 +16,8 @@ public class RanchTitleScreen : MonoBehaviour
 
     private const float VirtualWidth = 1600f;
     private const float VirtualHeight = 900f;
+    private const string DirectPlaceholder = "public-ip-or-dns:7777";
+    private const string RelayPlaceholder = "relay-host-or-ip:7778";
 
     public bool IsOpen { get; private set; }
 
@@ -25,7 +27,9 @@ public class RanchTitleScreen : MonoBehaviour
     private bool startingGame;
     private MenuPage page;
     private string joinAddress = "127.0.0.1";
-    private string onlineJoinAddress = "public-ip-or-dns:7777";
+    private string onlineJoinAddress = DirectPlaceholder;
+    private string relayAddress = RelayPlaceholder;
+    private string relayRoomCode = "RANCH";
     private string menuStatus = "";
 
     private Texture2D backgroundTexture;
@@ -152,6 +156,35 @@ public class RanchTitleScreen : MonoBehaviour
         BeginMultiplayerHost(true);
     }
 
+    private void BeginRelayHost()
+    {
+        if (!CanStart())
+            return;
+
+        if (IsPlaceholder(relayAddress, RelayPlaceholder))
+        {
+            menuStatus = "Enter the relay server address first.";
+            return;
+        }
+
+        if (multiplayer == null ||
+            !multiplayer.StartRelayHost(relayAddress, relayRoomCode))
+        {
+            menuStatus = multiplayer != null
+                ? multiplayer.StatusText
+                : "Multiplayer system is missing.";
+            return;
+        }
+
+        startingGame = true;
+        bool loaded = core.Save != null && core.Save.LoadOnStartup();
+
+        EnterGame(
+            (loaded ? "Host save loaded. " : "New host ranch started. ") +
+            "Relay host started. Give your friend the relay address and room code."
+        );
+    }
+
     private void BeginMultiplayerHost(bool onlineDirect)
     {
         if (!CanStart())
@@ -186,12 +219,44 @@ public class RanchTitleScreen : MonoBehaviour
         BeginMultiplayerClient(true);
     }
 
+    private void BeginRelayClient()
+    {
+        if (!CanStart())
+            return;
+
+        if (IsPlaceholder(relayAddress, RelayPlaceholder))
+        {
+            menuStatus = "Enter the relay server address first.";
+            return;
+        }
+
+        if (multiplayer == null ||
+            !multiplayer.StartRelayClient(relayAddress, relayRoomCode))
+        {
+            menuStatus = multiplayer != null
+                ? multiplayer.StatusText
+                : "Multiplayer system is missing.";
+            return;
+        }
+
+        startingGame = true;
+        EnterGame(
+            "Connecting as a relay guest. No router port forwarding is needed."
+        );
+    }
+
     private void BeginMultiplayerClient(bool onlineDirect)
     {
         if (!CanStart())
             return;
 
         string address = onlineDirect ? onlineJoinAddress : joinAddress;
+        if (onlineDirect && IsPlaceholder(address, DirectPlaceholder))
+        {
+            menuStatus = "Replace the placeholder with the host's public IP or DNS name.";
+            return;
+        }
+
         if (multiplayer == null ||
             !multiplayer.StartClient(address, onlineDirect))
         {
@@ -212,6 +277,12 @@ public class RanchTitleScreen : MonoBehaviour
     private bool CanStart()
     {
         return IsOpen && !startingGame && core != null;
+    }
+
+    private static bool IsPlaceholder(string value, string placeholder)
+    {
+        return string.IsNullOrWhiteSpace(value) ||
+            value.Trim() == placeholder;
     }
 
     private void EnterGame(string message)
@@ -338,17 +409,17 @@ public class RanchTitleScreen : MonoBehaviour
 
     private void DrawMultiplayerMenu()
     {
-        Rect card = new Rect(330f, 250f, 940f, 535f);
+        Rect card = new Rect(220f, 240f, 1160f, 565f);
         GUI.Box(card, GUIContent.none, cardStyle);
 
         GUI.Label(
-            new Rect(405f, 280f, 790f, 44f),
+            new Rect(365f, 270f, 870f, 44f),
             "TWO-PLAYER DIRECT MULTIPLAYER",
             subtitleStyle
         );
 
         if (GUI.Button(
-            new Rect(405f, 350f, 360f, 68f),
+            new Rect(285f, 345f, 300f, 64f),
             "HOST LAN RANCH",
             primaryButtonStyle))
         {
@@ -357,11 +428,20 @@ public class RanchTitleScreen : MonoBehaviour
         }
 
         if (GUI.Button(
-            new Rect(835f, 350f, 360f, 68f),
-            "HOST ONLINE RANCH",
+            new Rect(650f, 345f, 300f, 64f),
+            "HOST DIRECT",
             primaryButtonStyle))
         {
             BeginOnlineHost();
+            GUIUtility.ExitGUI();
+        }
+
+        if (GUI.Button(
+            new Rect(1015f, 345f, 300f, 64f),
+            "HOST RELAY",
+            primaryButtonStyle))
+        {
+            BeginRelayHost();
             GUIUtility.ExitGUI();
         }
 
@@ -370,32 +450,38 @@ public class RanchTitleScreen : MonoBehaviour
             : "Unavailable";
 
         GUI.Label(
-            new Rect(405f, 425f, 360f, 48f),
+            new Rect(285f, 415f, 300f, 48f),
             "LAN host address: " + hostAddress,
             statusStyle
         );
 
         GUI.Label(
-            new Rect(835f, 425f, 360f, 48f),
-            "Online host: forward TCP 7777 and share your public IP.",
+            new Rect(650f, 415f, 300f, 48f),
+            "Direct online still needs TCP 7777 port forwarding.",
             statusStyle
         );
 
         GUI.Label(
-            new Rect(405f, 495f, 170f, 35f),
-            "LAN HOST IPv4",
+            new Rect(1015f, 415f, 300f, 48f),
+            "Relay online needs no router changes.",
+            statusStyle
+        );
+
+        GUI.Label(
+            new Rect(285f, 485f, 110f, 35f),
+            "LAN HOST",
             fieldLabelStyle
         );
 
         joinAddress = GUI.TextField(
-            new Rect(575f, 488f, 190f, 46f),
+            new Rect(395f, 478f, 190f, 46f),
             joinAddress,
             45,
             fieldStyle
         );
 
         if (GUI.Button(
-            new Rect(405f, 550f, 360f, 68f),
+            new Rect(285f, 535f, 300f, 64f),
             "JOIN LAN RANCH",
             primaryButtonStyle))
         {
@@ -404,29 +490,64 @@ public class RanchTitleScreen : MonoBehaviour
         }
 
         GUI.Label(
-            new Rect(835f, 495f, 185f, 35f),
-            "PUBLIC HOST",
+            new Rect(650f, 485f, 105f, 35f),
+            "PUBLIC",
             fieldLabelStyle
         );
 
         onlineJoinAddress = GUI.TextField(
-            new Rect(1020f, 488f, 175f, 46f),
+            new Rect(755f, 478f, 195f, 46f),
             onlineJoinAddress,
             64,
             fieldStyle
         );
 
         if (GUI.Button(
-            new Rect(835f, 550f, 360f, 68f),
-            "JOIN ONLINE RANCH",
+            new Rect(650f, 535f, 300f, 64f),
+            "JOIN DIRECT",
             primaryButtonStyle))
         {
             BeginOnlineClient();
             GUIUtility.ExitGUI();
         }
 
+        GUI.Label(
+            new Rect(1015f, 475f, 105f, 28f),
+            "RELAY",
+            fieldLabelStyle
+        );
+
+        relayAddress = GUI.TextField(
+            new Rect(1120f, 470f, 195f, 42f),
+            relayAddress,
+            64,
+            fieldStyle
+        );
+
+        GUI.Label(
+            new Rect(1015f, 520f, 105f, 28f),
+            "ROOM",
+            fieldLabelStyle
+        );
+
+        relayRoomCode = GUI.TextField(
+            new Rect(1120f, 515f, 195f, 42f),
+            relayRoomCode,
+            24,
+            fieldStyle
+        );
+
         if (GUI.Button(
-            new Rect(405f, 665f, 260f, 58f),
+            new Rect(1015f, 575f, 300f, 64f),
+            "JOIN RELAY",
+            primaryButtonStyle))
+        {
+            BeginRelayClient();
+            GUIUtility.ExitGUI();
+        }
+
+        if (GUI.Button(
+            new Rect(285f, 680f, 260f, 58f),
             "BACK",
             secondaryButtonStyle))
         {
@@ -436,9 +557,9 @@ public class RanchTitleScreen : MonoBehaviour
         }
 
         GUI.Label(
-            new Rect(690f, 650f, 505f, 86f),
+            new Rect(570f, 660f, 745f, 90f),
             string.IsNullOrEmpty(menuStatus)
-                ? "Online mode is direct peer-to-peer: no dedicated server, but the host must be reachable from the internet."
+                ? "Use Relay Online when you do not want to port forward. Both players connect outward to the same relay room."
                 : menuStatus,
             statusStyle
         );
