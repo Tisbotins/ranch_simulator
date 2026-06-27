@@ -8,7 +8,7 @@ An interactive ranch harvesting and combat game built with Unity.
 - Single-player ranch progression
 - Harvesting, bottling, selling, shops, upgrades, and save/load support
 - Combat, waves, enemies, bosses, equipment, traps, and class progression
-- Two-player multiplayer with an authoritative host
+- Two-player co-op multiplayer where each player has full access to the game
 
 ## Unity Version
 
@@ -48,7 +48,17 @@ Online Relay is the no-port-forwarding option. It needs a small public relay pro
 5. Guest enters the same relay address and room code.
 6. Guest starts **Join Relay**.
 
-The relay only forwards text packets between the host and guest. The host still owns the ranch state, waves, rewards, and save file. The guest can move, see the host and enemies, and make basic attacks against host enemies.
+The relay only forwards text packets between the host and guest.
+
+### How co-op works
+
+Both players run the **full** game. The guest is no longer a stripped-down helper:
+
+- Each player has their **own** ranch, money, bottles, shop, upgrades, class, laboratory, Ranch Knowledge, traps, and their **own save file** (the guest saves to `RanchSimulatorGuestSave.json`, the host to `RanchSimulatorSave.json`). Extracting, shopping, changing class, and buying upgrades all work for the guest exactly as they do for the host, and never touch the other player's wallet.
+- The two players **share the enemy threat**. The host spawns the waves and bosses; the guest sees those same enemies, deals damage to them through networked attacks, and takes damage from them.
+- When a player's health hits zero they are **downed**, not killed — the session keeps running. A teammate can stand close and **hold `E`** to revive them. If nobody reaches them in time, a downed player auto-recovers after 30 seconds, so the game can never soft-lock (including when the host goes down).
+
+Because progression is per-player, each machine simulates its own world (tree growth, empire buildings, area access, passive income); the players share their avatars, the enemy waves, and the revive flow.
 
 ## Controls
 
@@ -56,8 +66,11 @@ The relay only forwards text packets between the host and guest. The host still 
 - `F10`: disconnect multiplayer and return to the title screen
 - `Z`: save
 - `X`: load
-- `Left Click` or `Space`: guest attack in multiplayer
+- `Hold E` near a downed teammate: revive them (multiplayer)
+- `Left Click` or `Space`: guest attack against shared enemies in multiplayer
 - `Q`: guest heavy attack in multiplayer
+
+The guest plays with the same controls as the host (movement, `E` to extract/interact, `P` shop, `K` knowledge, class and laboratory menus, `[` / `]` to change bottle, traps, etc.).
 
 ## Project Layout
 

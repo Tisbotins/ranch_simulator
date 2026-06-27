@@ -138,7 +138,7 @@ public class RanchProgressionSystem : MonoBehaviour
 
     private void Update()
     {
-        if (core == null || core.GameWon || core.Health.IsDead || core.Settings.IsOpen ||
+        if (core == null || core.GameWon || core.Health.IsDead || core.Health.IsDowned || core.Settings.IsOpen ||
             core.Shop.IsOpen || (core.Classes != null && core.Classes.IsOpen) ||
             (core.Laboratory != null && core.Laboratory.IsOpen))
         {

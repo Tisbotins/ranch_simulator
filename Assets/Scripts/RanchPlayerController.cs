@@ -56,7 +56,7 @@ public class RanchPlayerController : MonoBehaviour
             core.ShowMessage("You fell off the map and were returned to safety.");
         }
 
-        if (core.GameWon || core.Health.IsDead || core.Shop.IsOpen ||
+        if (core.GameWon || core.Health.IsDead || core.Health.IsDowned || core.Shop.IsOpen ||
             core.Progression.IsOpen || core.Settings.IsOpen ||
             (core.Classes != null && core.Classes.IsOpen) ||
             (core.Laboratory != null && core.Laboratory.IsOpen))
@@ -65,21 +65,9 @@ public class RanchPlayerController : MonoBehaviour
             return;
         }
 
-        // LAN guests own their local movement/equipment presentation while
-        // ranch state, shops, waves, rewards, and saving stay host-owned.
-        if (RanchGameModeState.IsLanClient)
-        {
-            CurrentPrompt = "";
-            IsExtracting = false;
-            HandleCursor();
-            HandleEquipmentSlots();
-            HandleMovement();
-            UpdateCamera();
-            UpdateWeaponAnimation();
-            UpdateSafetyPosition();
-            return;
-        }
-
+        // Both the host and the LAN guest run the full local game loop. Each
+        // player owns their own ranch, shop, upgrades, and save; only the shared
+        // enemy threat and downed/revive flow are networked (RanchLanMultiplayer).
         HandleCursor();
         HandleEquipmentSlots();
         HandleMovement();
