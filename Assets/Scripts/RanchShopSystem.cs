@@ -229,7 +229,7 @@ public class RanchShopSystem : MonoBehaviour
 
     private void Update()
     {
-        if (core == null || core.GameWon || core.Health.IsDead)
+        if (core == null || core.GameWon || core.Health.IsDead || core.Health.IsDowned)
             return;
 
         if (Input.GetKeyDown(KeyCode.P) && !core.Settings.IsOpen)
@@ -249,7 +249,7 @@ public class RanchShopSystem : MonoBehaviour
 
     public void OpenShop()
     {
-        if (IsOpen || core.Health.IsDead || core.GameWon || core.Settings.IsOpen ||
+        if (IsOpen || core.Health.IsDead || core.Health.IsDowned || core.GameWon || core.Settings.IsOpen ||
             (core.Classes != null && core.Classes.IsOpen) ||
             (core.Laboratory != null && core.Laboratory.IsOpen))
             return;

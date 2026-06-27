@@ -144,7 +144,8 @@ public class RanchClassSystem : MonoBehaviour
         }
 
         if (IsOpen || core.Shop.IsOpen || core.Progression.IsOpen || core.Settings.IsOpen ||
-            (core.Laboratory != null && core.Laboratory.IsOpen) || core.GameWon || core.Health.IsDead)
+            (core.Laboratory != null && core.Laboratory.IsOpen) || core.GameWon ||
+            core.Health.IsDead || core.Health.IsDowned)
         {
             return;
         }

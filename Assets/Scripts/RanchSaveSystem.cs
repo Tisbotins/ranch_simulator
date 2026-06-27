@@ -116,9 +116,6 @@ public class RanchSaveSystem : MonoBehaviour
 
     private void Update()
     {
-        if (RanchGameModeState.IsLanClient)
-            return;
-
         if (core == null || loading)
         {
             return;
@@ -163,9 +160,6 @@ public class RanchSaveSystem : MonoBehaviour
 
     public void RequestSave()
     {
-        if (RanchGameModeState.IsLanClient)
-            return;
-
         if (!loading)
         {
             dirty = true;
@@ -174,13 +168,6 @@ public class RanchSaveSystem : MonoBehaviour
 
     public void SaveGame(bool showMessage)
     {
-        if (RanchGameModeState.IsLanClient)
-        {
-            if (showMessage && core != null)
-                core.ShowMessage("Only the LAN host can save the shared ranch.");
-            return;
-        }
-
         if (loading)
         {
             ReportSaveFailure(
@@ -290,12 +277,6 @@ public class RanchSaveSystem : MonoBehaviour
 
     public bool LoadGame(bool showMessage)
     {
-        if (RanchGameModeState.IsLanClient)
-        {
-            if (showMessage && core != null)
-                core.ShowMessage("Only the LAN host can load the shared ranch.");
-            return false;
-        }
 
         if (core == null)
         {

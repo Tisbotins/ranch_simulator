@@ -99,6 +99,9 @@ public class RanchUI : MonoBehaviour
         if (core.Health.IsDead)
             DrawDeathScreen();
 
+        if (core.Health.IsDowned)
+            DrawDownedScreen();
+
         if (core.GameWon)
             DrawWinScreen();
 
@@ -291,6 +294,19 @@ public class RanchUI : MonoBehaviour
         GUI.Label(
             new Rect(rect.x + 90f, rect.y + 145f, rect.width - 180f, 150f),
             "The Ranch Raiders overwhelmed you.\n\nUse weapons, blocking, dodges, health upgrades, and area progression.\n\nPress R to restart from your latest save.",
+            centeredStyle
+        );
+    }
+
+    private void DrawDownedScreen()
+    {
+        Rect rect = new Rect(390f, 280f, 820f, 320f);
+        GUI.Box(rect, GUIContent.none, panelStyle);
+        GUI.Label(new Rect(rect.x + 30f, rect.y + 40f, rect.width - 60f, 70f), "YOU ARE DOWNED", largeStyle);
+        GUI.Label(
+            new Rect(rect.x + 80f, rect.y + 135f, rect.width - 160f, 150f),
+            "You were knocked out, but the ranch fights on.\n\nYour teammate can revive you — have them stand close and hold E.\n\nAuto-recovery in " +
+            Mathf.CeilToInt(Mathf.Max(0f, core.Health.DownedAutoRecoverRemaining)) + " seconds.",
             centeredStyle
         );
     }

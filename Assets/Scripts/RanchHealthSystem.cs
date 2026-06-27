@@ -17,6 +17,14 @@ public class RanchHealthSystem : MonoBehaviour
     public int ArmorLevel { get; private set; }
     public int RegenerationLevel { get; private set; }
     public bool IsDead { get; private set; }
+
+    // Co-op downed state: in multiplayer a knocked-out player is "downed" rather
+    // than permanently dead, so the session never breaks. A teammate can revive
+    // them, and a safety timer auto-recovers them if nobody does.
+    public bool IsDowned { get; private set; }
+    public float DownedAutoRecoverRemaining { get; private set; }
+    public const float DownedAutoRecoverSeconds = 30f;
+
     public float DamageFlashTime { get; private set; }
 
     private RanchGameCore core;
@@ -30,6 +38,15 @@ public class RanchHealthSystem : MonoBehaviour
     private void Update()
     {
         if (DamageFlashTime > 0f) DamageFlashTime -= Time.unscaledDeltaTime;
+
+        if (IsDowned)
+        {
+            DownedAutoRecoverRemaining -= Time.unscaledDeltaTime;
+            if (DownedAutoRecoverRemaining <= 0f)
+                AutoRecover();
+            return;
+        }
+
         if (IsDead || core == null || core.GameWon || core.Shop.IsOpen || core.Progression.IsOpen) return;
         if (RegenerationPerSecond > 0f && CurrentHealth < MaxHealth)
             CurrentHealth = Mathf.Min(MaxHealth, CurrentHealth + RegenerationPerSecond * Time.deltaTime);
@@ -37,7 +54,7 @@ public class RanchHealthSystem : MonoBehaviour
 
     public void TakeDamage(float rawDamage, string source, RanchEnemy attacker = null)
     {
-        if (IsDead || rawDamage <= 0f) return;
+        if (IsDead || IsDowned || rawDamage <= 0f) return;
 
         string combatResult;
         float combatAdjusted = core.Combat.ResolveIncomingDamage(rawDamage, attacker, out combatResult);
@@ -117,16 +134,69 @@ public class RanchHealthSystem : MonoBehaviour
         RegenerationLevel = Mathf.Clamp(regenerationLevel, 0, regenValues.Length - 1);
         CurrentHealth = Mathf.Clamp(currentHealth, 1f, MaxHealth);
         IsDead = false;
+        IsDowned = false;
+        DownedAutoRecoverRemaining = 0f;
         DamageFlashTime = 0f;
     }
 
     private void Die()
     {
+        // In co-op, going down must never break the session. Enter the downed
+        // state and let a teammate revive instead of ending the game.
+        if (RanchGameModeState.IsMultiplayer)
+        {
+            EnterDowned();
+            return;
+        }
+
         IsDead = true;
         core.Save.SaveGame(false);
         core.ShowMessage("You were defeated by the Ranch Raiders. Press R to restart.", 999f);
         if (core.Player != null) core.Player.enabled = false;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+
+    private void EnterDowned()
+    {
+        if (IsDowned) return;
+
+        IsDowned = true;
+        IsDead = false;
+        CurrentHealth = 0f;
+        DamageFlashTime = 0.2f;
+        DownedAutoRecoverRemaining = DownedAutoRecoverSeconds;
+
+        // Freeze the downed player but keep the world running for everyone.
+        if (core.Player != null) core.Player.enabled = false;
+
+        core.ShowMessage(
+            "You are DOWNED. Your teammate can revive you — auto-recovery in " +
+            Mathf.CeilToInt(DownedAutoRecoverSeconds) + "s.",
+            DownedAutoRecoverSeconds
+        );
+    }
+
+    /// <summary>Revive a downed player with a fraction of their max health.</summary>
+    public void Revive(float healthFraction)
+    {
+        if (!IsDowned) return;
+
+        IsDowned = false;
+        IsDead = false;
+        DownedAutoRecoverRemaining = 0f;
+        CurrentHealth = Mathf.Clamp(MaxHealth * healthFraction, 1f, MaxHealth);
+        DamageFlashTime = 0f;
+
+        if (core.Player != null && !core.GameWon)
+            core.Player.enabled = true;
+
+        core.ShowMessage("You were revived! Get back in the fight.", 4f);
+    }
+
+    private void AutoRecover()
+    {
+        Revive(0.35f);
+        core.ShowMessage("No teammate reached you in time — you recovered on your own.", 4f);
     }
 }

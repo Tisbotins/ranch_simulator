@@ -183,7 +183,10 @@ public class RanchGameCore : MonoBehaviour
             return;
         }
 
-        if (Health != null && Health.IsDead && Input.GetKeyDown(KeyCode.R))
+        // Single-player only: in multiplayer death becomes a revivable "downed"
+        // state, so reloading the scene here would needlessly break the session.
+        if (Health != null && Health.IsDead && !RanchGameModeState.IsMultiplayer &&
+            Input.GetKeyDown(KeyCode.R))
             RestartScene();
     }
 

@@ -27,6 +27,11 @@ public class RanchLanMultiplayer : MonoBehaviour
     public const int DefaultPort = 7777;
     public const int DefaultRelayPort = 7778;
 
+    // Each player keeps an independent economy, so the guest persists to its own
+    // save file rather than sharing (or overwriting) the host's.
+    private const string HostSaveFileName = "RanchSimulatorSave.json";
+    private const string GuestSaveFileName = "RanchSimulatorGuestSave.json";
+
     private enum TransportMode
     {
         Lan,
@@ -64,7 +69,11 @@ public class RanchLanMultiplayer : MonoBehaviour
     private const float SummarySendInterval = 0.50f;
     private const float RemoteEnemyDamageRange = 2.15f;
     private const float RemoteEnemyDamageInterval = 0.82f;
-    private const float GuestExtractStaminaPerSecond = 7f;
+
+    // Co-op revive: how close you must be to a downed teammate and how long you
+    // must hold the interact key to bring them back up.
+    private const float ReviveRange = 3.0f;
+    private const float ReviveHoldSeconds = 1.4f;
 
     [Serializable]
     private class LanPacket
@@ -193,7 +202,7 @@ public class RanchLanMultiplayer : MonoBehaviour
     private float nextEnemySend;
     private float nextSummarySend;
     private float nextGuestAttack;
-    private float guestExtractingVisualUntil;
+    private float reviveHoldTimer;
     private float nextRemoteEnemyDamage;
     private float lastHostAcceptedAttack;
     private int enemyFrame;
@@ -211,14 +220,10 @@ public class RanchLanMultiplayer : MonoBehaviour
     private int guestAttacksSent;
     private int guestAttacksReceived;
     private int guestAttackHits;
-    private int guestExtractsSent;
-    private int guestExtractsReceived;
-    private int guestExtractsAccepted;
-    private int guestInteractionsSent;
-    private int guestInteractionsReceived;
-    private int guestInteractionsAccepted;
     private int remoteDamageSent;
     private int remoteDamageReceived;
+    private int revivesSent;
+    private int revivesReceived;
     private string lastNetworkEvent = "No multiplayer traffic yet";
 
     private GUIStyle panelStyle;
@@ -233,6 +238,20 @@ public class RanchLanMultiplayer : MonoBehaviour
         core = gameCore;
         localAddress = FindLocalIPv4Address();
         activeInstance = this;
+    }
+
+    // Point the guest at its own save file and load any existing personal
+    // progression, so a joining player keeps their ranch across sessions without
+    // ever touching the host's save.
+    private void ConfigureGuestSaveSlot()
+    {
+        if (core == null || core.Save == null)
+            return;
+
+        core.Save.SaveFileName = GuestSaveFileName;
+
+        if (core.Save.HasSaveFile)
+            core.Save.LoadGame(false);
     }
 
     public static void NotifyLocalAttackAnimation(bool heavy, int combo)
@@ -276,6 +295,8 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         ShutdownConnection(false);
         RanchGameModeState.SetMode(RanchGameMode.LanHost);
+        if (core.Save != null)
+            core.Save.SaveFileName = HostSaveFileName;
         transportMode = onlineDirect
             ? TransportMode.DirectOnline
             : TransportMode.Lan;
@@ -336,6 +357,7 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         ShutdownConnection(false);
         RanchGameModeState.SetMode(RanchGameMode.LanClient);
+        ConfigureGuestSaveSlot();
         transportMode = onlineDirect
             ? TransportMode.DirectOnline
             : TransportMode.Lan;
@@ -404,6 +426,10 @@ public class RanchLanMultiplayer : MonoBehaviour
         RanchGameModeState.SetMode(
             host ? RanchGameMode.LanHost : RanchGameMode.LanClient
         );
+        if (core.Save != null)
+            core.Save.SaveFileName = host ? HostSaveFileName : GuestSaveFileName;
+        if (!host)
+            ConfigureGuestSaveSlot();
         transportMode = TransportMode.Relay;
 
         stopRequested = false;
@@ -484,12 +510,14 @@ public class RanchLanMultiplayer : MonoBehaviour
             }
             else
             {
-                HandleGuestBottleSelectionInput();
+                // The guest plays its own local game for everything except combat
+                // against the shared host enemies, which is still proxied so the
+                // host applies authoritative damage to its real enemies.
                 HandleGuestAttackInput(now);
-                HandleGuestExtractInput();
-                HandleGuestInteractionInput();
-                UpdateGuestExtractionOverride();
             }
+
+            // Either player can revive the other when they are downed.
+            HandleReviveInput();
         }
 
         if (Input.GetKeyDown(KeyCode.F10))
@@ -500,21 +528,19 @@ public class RanchLanMultiplayer : MonoBehaviour
     {
         clientRestrictionsApplied = true;
 
+        // The guest runs its OWN full economy locally (ranch, shop, upgrades,
+        // classes, laboratory, knowledge, bottles, traps, extraction, and its own
+        // save). Only the shared enemy threat is host-authoritative: the guest
+        // sees host-spawned enemies as visuals and damages them through networked
+        // attack requests, so those systems stay disabled here to avoid the guest
+        // spawning a second, separate set of enemies.
         SetEnabled(core.Waves, false);
         SetEnabled(core.Bosses, false);
         SetEnabled(core.CJ, false);
-        SetEnabled(core.Drew, false);
-        SetEnabled(core.Shop, false);
-        SetEnabled(core.Progression, false);
-        SetEnabled(core.Classes, false);
-        SetEnabled(core.Laboratory, false);
-        SetEnabled(core.Deployables, false);
-        SetEnabled(core.Tree, false);
-        SetEnabled(core.Bottles, false);
-        SetEnabled(core.Upgrades, false);
 
         core.ShowMessage(
-            "Joined as " + SessionLabel + " guest. The host owns the ranch, waves, rewards, and save. You can move and help attack enemies.",
+            "Joined as " + SessionLabel + " guest. You have your own ranch, shop, upgrades, and save. " +
+            "You share the same enemies with the host — fight together, and revive each other when downed.",
             10f
         );
     }
@@ -549,10 +575,9 @@ public class RanchLanMultiplayer : MonoBehaviour
             classType = core.Classes != null
                 ? (int)core.Classes.CurrentClass
                 : 0,
-            dead = core.Health != null && core.Health.IsDead,
-            extracting =
-                (core.Player != null && core.Player.IsExtracting) ||
-                Time.unscaledTime < guestExtractingVisualUntil
+            dead = core.Health != null &&
+                   (core.Health.IsDead || core.Health.IsDowned),
+            extracting = core.Player != null && core.Player.IsExtracting
         });
     }
 
@@ -643,41 +668,10 @@ public class RanchLanMultiplayer : MonoBehaviour
         });
     }
 
-    private void HandleGuestBottleSelectionInput()
-    {
-        if (!connected ||
-            core.Bottles == null ||
-            (core.Health != null && core.Health.IsDead))
-        {
-            return;
-        }
-
-        int direction = 0;
-        if (Input.GetKeyDown(KeyCode.LeftBracket))
-            direction = -1;
-        else if (Input.GetKeyDown(KeyCode.RightBracket))
-            direction = 1;
-
-        if (direction == 0)
-            return;
-
-        core.Bottles.CycleSelection(direction);
-
-        QueuePacket(new LanPacket
-        {
-            type = "select_bottle",
-            bottleTier = core.Bottles.SelectedTier
-        });
-
-        lastNetworkEvent =
-            "Guest selected " +
-            core.Bottles.GetTierName(core.Bottles.SelectedTier);
-    }
-
     private void HandleGuestAttackInput(float now)
     {
         if (!connected || core.Player == null || Cursor.visible ||
-            (core.Health != null && core.Health.IsDead) ||
+            (core.Health != null && (core.Health.IsDead || core.Health.IsDowned)) ||
             core.Settings == null || core.Settings.IsOpen)
             return;
 
@@ -764,131 +758,67 @@ public class RanchLanMultiplayer : MonoBehaviour
         return staminaCost;
     }
 
-    private void HandleGuestExtractInput()
+    // Hold the interact key next to a downed teammate to revive them. Works the
+    // same whether the local player is the host or the guest.
+    private void HandleReviveInput()
     {
+        bool localIncapacitated =
+            core.Health != null && (core.Health.IsDead || core.Health.IsDowned);
+
         if (!connected ||
             core.Player == null ||
-            (core.Health != null && core.Health.IsDead) ||
-            core.RanchTreeTransform == null ||
-            core.Settings == null ||
-            core.Settings.IsOpen)
+            remotePlayer == null ||
+            !hasRemotePlayerState ||
+            !remotePlayerDead ||
+            localIncapacitated ||
+            (core.Settings != null && core.Settings.IsOpen))
         {
+            reviveHoldTimer = 0f;
             return;
         }
 
-        bool nearTree =
-            Vector3.Distance(
-                core.Player.transform.position,
-                core.RanchTreeTransform.position
-            ) <= core.Player.InteractionRange + 0.75f;
-
-        if (!nearTree || !Input.GetKey(KeyCode.E))
-            return;
-
-        float extractDelta = Mathf.Min(Time.deltaTime, 0.05f);
-        if (extractDelta <= 0f)
-            return;
-
-        float staminaCost = GuestExtractStaminaPerSecond * extractDelta;
-        if (core.Stamina != null &&
-            staminaCost > 0f &&
-            !core.Stamina.TrySpend(staminaCost))
-        {
-            return;
-        }
-
-        guestExtractingVisualUntil = Time.unscaledTime + 0.12f;
-
-        Transform player = core.Player.transform;
-        QueuePacket(new LanPacket
-        {
-            type = "extract",
-            deltaTime = extractDelta,
-            x = player.position.x,
-            y = player.position.y,
-            z = player.position.z,
-            rotationY = player.eulerAngles.y
-        });
-
-        guestExtractsSent++;
-        lastNetworkEvent =
-            "Guest extract sent " + guestExtractsSent;
-    }
-
-    private void UpdateGuestExtractionOverride()
-    {
-        if (core.Equipment == null)
-            return;
-
-        core.Equipment.SetExtractionOverride(
-            Time.unscaledTime < guestExtractingVisualUntil
+        float distance = Vector3.Distance(
+            core.Player.transform.position,
+            remotePlayer.transform.position
         );
+
+        if (distance > ReviveRange || !Input.GetKey(KeyCode.E))
+        {
+            reviveHoldTimer = 0f;
+            return;
+        }
+
+        reviveHoldTimer += Time.unscaledDeltaTime;
+
+        float remaining = Mathf.Max(0f, ReviveHoldSeconds - reviveHoldTimer);
+        core.ShowMessage(
+            "Reviving teammate... hold E (" + remaining.ToString("0.0") + "s)",
+            0.4f
+        );
+
+        if (reviveHoldTimer < ReviveHoldSeconds)
+            return;
+
+        reviveHoldTimer = 0f;
+        QueuePacket(new LanPacket { type = "revive" });
+        revivesSent++;
+        lastNetworkEvent = "Sent revive to teammate " + revivesSent;
+        core.ShowMessage("Teammate revived!", 3f);
     }
 
-    private void HandleGuestInteractionInput()
+    private void ProcessRevive()
     {
-        if (!connected ||
-            core.Player == null ||
-            (core.Health != null && core.Health.IsDead) ||
-            core.Settings == null ||
-            core.Settings.IsOpen ||
-            !Input.GetKeyDown(KeyCode.E))
+        revivesReceived++;
+
+        if (core.Health != null && core.Health.IsDowned)
         {
-            return;
+            core.Health.Revive(0.5f);
+            lastNetworkEvent = "Revived by teammate " + revivesReceived;
         }
-
-        RanchInteractable interactable =
-            FindNearestInteractable(core.Player.transform.position);
-
-        if (interactable == null ||
-            interactable is RanchTreeInteractable)
+        else
         {
-            return;
+            lastNetworkEvent = "Revive received but you were not downed";
         }
-
-        bool modifier =
-            Input.GetKey(KeyCode.LeftShift) ||
-            Input.GetKey(KeyCode.RightShift);
-
-        RanchStation station = interactable as RanchStation;
-        if (station != null)
-        {
-            QueuePacket(new LanPacket
-            {
-                type = "station",
-                stationType = (int)station.StationType,
-                modifier = modifier,
-                x = core.Player.transform.position.x,
-                y = core.Player.transform.position.y,
-                z = core.Player.transform.position.z
-            });
-
-            guestInteractionsSent++;
-            lastNetworkEvent =
-                "Guest station request: " + station.StationType;
-            return;
-        }
-
-        RanchAreaGate areaGate = interactable as RanchAreaGate;
-        if (areaGate != null)
-        {
-            QueuePacket(new LanPacket
-            {
-                type = "area_gate",
-                areaIndex = areaGate.AreaIndex,
-                x = core.Player.transform.position.x,
-                y = core.Player.transform.position.y,
-                z = core.Player.transform.position.z
-            });
-
-            guestInteractionsSent++;
-            lastNetworkEvent =
-                "Guest area gate request: " + areaGate.AreaIndex;
-            return;
-        }
-
-        lastNetworkEvent =
-            "That guest interaction is host-only for now";
     }
 
     private void ProcessIncomingPackets()
@@ -958,24 +888,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                         ProcessRemoteDamage(packet);
                     break;
 
-                case "extract":
-                    if (RanchGameModeState.IsLanHost)
-                        ProcessGuestExtract(packet);
-                    break;
-
-                case "select_bottle":
-                    if (RanchGameModeState.IsLanHost)
-                        ProcessGuestBottleSelection(packet);
-                    break;
-
-                case "station":
-                    if (RanchGameModeState.IsLanHost)
-                        ProcessGuestStation(packet);
-                    break;
-
-                case "area_gate":
-                    if (RanchGameModeState.IsLanHost)
-                        ProcessGuestAreaGate(packet);
+                case "revive":
+                    ProcessRevive();
                     break;
 
                 case "enemy":
@@ -1151,186 +1065,6 @@ public class RanchLanMultiplayer : MonoBehaviour
             "Enemy hit guest " + remoteDamageSent + "x";
     }
 
-    private void ProcessGuestExtract(LanPacket packet)
-    {
-        guestExtractsReceived++;
-
-        if (remotePlayerDead)
-        {
-            lastNetworkEvent = "Guest extract ignored: guest is defeated";
-            return;
-        }
-
-        if (core.Tree == null || core.RanchTreeTransform == null)
-        {
-            lastNetworkEvent = "Guest extract received but tree is missing";
-            return;
-        }
-
-        Vector3 extractOrigin = hasRemotePlayerState
-            ? remotePlayerTargetPosition
-            : new Vector3(packet.x, packet.y, packet.z);
-
-        float distance = Vector3.Distance(
-            extractOrigin,
-            core.RanchTreeTransform.position
-        );
-
-        if (distance > 4.25f)
-        {
-            lastNetworkEvent =
-                "Guest extract rejected: too far from tree";
-            return;
-        }
-
-        float extractDelta = Mathf.Clamp(packet.deltaTime, 0f, 0.05f);
-        if (extractDelta <= 0f)
-            return;
-
-        core.Tree.Extract(extractDelta);
-        guestExtractsAccepted++;
-        lastNetworkEvent =
-            "Guest extracted ranch " + guestExtractsAccepted + "x";
-    }
-
-    private void ProcessGuestBottleSelection(LanPacket packet)
-    {
-        if (core.Bottles == null)
-            return;
-
-        int tier = Mathf.Clamp(
-            packet.bottleTier,
-            0,
-            RanchBottleSystem.TierCount - 1
-        );
-
-        if (!core.Bottles.IsUnlocked(tier))
-        {
-            lastNetworkEvent = "Guest selected a locked bottle tier";
-            return;
-        }
-
-        core.Bottles.SelectTier(tier);
-        lastNetworkEvent =
-            "Guest selected " + core.Bottles.GetTierName(tier);
-    }
-
-    private void ProcessGuestStation(LanPacket packet)
-    {
-        guestInteractionsReceived++;
-
-        if (remotePlayerDead)
-        {
-            lastNetworkEvent = "Guest station ignored: guest is defeated";
-            return;
-        }
-
-        RanchStationType stationType =
-            (RanchStationType)Mathf.Clamp(
-                packet.stationType,
-                0,
-                (int)RanchStationType.Shop
-            );
-
-        Vector3 origin = hasRemotePlayerState
-            ? remotePlayerTargetPosition
-            : new Vector3(packet.x, packet.y, packet.z);
-
-        RanchStation station = FindNearestStation(origin, stationType);
-        if (station == null)
-        {
-            lastNetworkEvent =
-                "Guest " + stationType + " rejected: too far";
-            return;
-        }
-
-        switch (stationType)
-        {
-            case RanchStationType.Bottle:
-                if (packet.modifier)
-                    core.Bottles.BottleAllSelected();
-                else
-                    core.Bottles.TryBottleSelected();
-                break;
-
-            case RanchStationType.Sell:
-                if (packet.modifier)
-                    core.Bottles.SellAllSelected();
-                else
-                    core.Bottles.SellOneSelected();
-                break;
-
-            case RanchStationType.BottleUpgrade:
-                core.Upgrades.BuyNextBottleTier();
-                break;
-
-            case RanchStationType.ToolUpgrade:
-                core.Upgrades.BuyNextToolTier();
-                break;
-
-            case RanchStationType.Drew:
-                core.Drew.HireOrUpgrade();
-                break;
-
-            case RanchStationType.CJGate:
-                core.CJ.ChallengeCJ();
-                break;
-
-            case RanchStationType.Shop:
-                core.ShowMessage(
-                    "Guest reached the Ranch Empire Shop. Full shop menus are host-only for now.",
-                    6f
-                );
-                break;
-        }
-
-        guestInteractionsAccepted++;
-        lastNetworkEvent =
-            "Guest used " + stationType +
-            " (" + guestInteractionsAccepted + " accepted)";
-    }
-
-    private void ProcessGuestAreaGate(LanPacket packet)
-    {
-        guestInteractionsReceived++;
-
-        if (remotePlayerDead)
-        {
-            lastNetworkEvent = "Guest gate ignored: guest is defeated";
-            return;
-        }
-
-        int areaIndex = Mathf.Clamp(
-            packet.areaIndex,
-            0,
-            RanchAreaSystem.AreaCount - 1
-        );
-
-        Vector3 origin = hasRemotePlayerState
-            ? remotePlayerTargetPosition
-            : new Vector3(packet.x, packet.y, packet.z);
-
-        RanchAreaGate gate = FindNearestAreaGate(origin, areaIndex);
-        if (gate == null)
-        {
-            lastNetworkEvent =
-                "Guest area gate rejected: too far";
-            return;
-        }
-
-        if (core.Areas.TryUnlock(areaIndex))
-        {
-            guestInteractionsAccepted++;
-            lastNetworkEvent =
-                "Guest opened area gate " + areaIndex;
-        }
-        else
-        {
-            lastNetworkEvent =
-                "Guest area gate request denied by requirements";
-        }
-    }
-
     private void ProcessEnemyPacket(LanPacket packet)
     {
         if (!remoteEnemies.TryGetValue(packet.id, out RemoteEnemyVisual visual))
@@ -1355,134 +1089,14 @@ public class RanchLanMultiplayer : MonoBehaviour
 
     private void ProcessSummaryPacket(LanPacket packet)
     {
+        // The guest owns its own economy now, so the host summary is used only to
+        // show the teammate's progress in the info panel — it must NOT overwrite
+        // the guest's wallet, bottles, upgrades, or areas.
         hostRawRanch = packet.rawRanch;
         hostTotalRanch = packet.totalRanch;
         hostMoney = packet.money;
         hostWave = packet.wave;
         hostEnemyCount = packet.enemyCount;
-
-        if (core.Inventory != null)
-        {
-            core.Inventory.RestoreState(
-                packet.rawRanch,
-                packet.totalRanch,
-                packet.money,
-                packet.bottleCounts
-            );
-        }
-
-        if (core.Bottles != null)
-        {
-            core.Bottles.RestoreState(
-                packet.unlockedBottleTier,
-                packet.selectedBottleTier
-            );
-        }
-
-        if (core.Upgrades != null)
-            core.Upgrades.RestoreState(packet.toolTier);
-
-        if (core.Areas != null)
-        {
-            core.Areas.RestoreState(new[]
-            {
-                packet.area0,
-                packet.area1,
-                packet.area2,
-                packet.area3
-            });
-        }
-    }
-
-    private RanchInteractable FindNearestInteractable(Vector3 origin)
-    {
-        Collider[] colliders = Physics.OverlapSphere(origin, 4.5f);
-        RanchInteractable nearest = null;
-        float nearestDistance = float.MaxValue;
-
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            RanchInteractable interactable =
-                colliders[i].GetComponentInParent<RanchInteractable>();
-
-            if (interactable == null)
-                continue;
-
-            float distance = Vector3.Distance(
-                origin,
-                interactable.transform.position
-            );
-
-            if (distance < nearestDistance)
-            {
-                nearest = interactable;
-                nearestDistance = distance;
-            }
-        }
-
-        return nearest;
-    }
-
-    private RanchStation FindNearestStation(
-        Vector3 origin,
-        RanchStationType stationType)
-    {
-        Collider[] colliders = Physics.OverlapSphere(origin, 5.25f);
-        RanchStation nearest = null;
-        float nearestDistance = float.MaxValue;
-
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            RanchStation station =
-                colliders[i].GetComponentInParent<RanchStation>();
-
-            if (station == null || station.StationType != stationType)
-                continue;
-
-            float distance = Vector3.Distance(
-                origin,
-                station.transform.position
-            );
-
-            if (distance < nearestDistance)
-            {
-                nearest = station;
-                nearestDistance = distance;
-            }
-        }
-
-        return nearest;
-    }
-
-    private RanchAreaGate FindNearestAreaGate(
-        Vector3 origin,
-        int areaIndex)
-    {
-        Collider[] colliders = Physics.OverlapSphere(origin, 7f);
-        RanchAreaGate nearest = null;
-        float nearestDistance = float.MaxValue;
-
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            RanchAreaGate gate =
-                colliders[i].GetComponentInParent<RanchAreaGate>();
-
-            if (gate == null || gate.AreaIndex != areaIndex)
-                continue;
-
-            float distance = Vector3.Distance(
-                origin,
-                gate.transform.position
-            );
-
-            if (distance < nearestDistance)
-            {
-                nearest = gate;
-                nearestDistance = distance;
-            }
-        }
-
-        return nearest;
     }
 
     private void EnsureRemotePlayerVisual()
@@ -1574,7 +1188,7 @@ public class RanchLanMultiplayer : MonoBehaviour
             Mathf.CeilToInt(Mathf.Max(0f, remotePlayerStamina)) +
             "/" +
             Mathf.CeilToInt(Mathf.Max(1f, remotePlayerMaxStamina)) +
-            (remotePlayerDead ? "\nDEFEATED" : "");
+            (remotePlayerDead ? "\nDOWNED — hold E to revive" : "");
     }
 
     private void ApplyRemoteEquipmentPacket(LanPacket packet)
@@ -2400,14 +2014,11 @@ public class RanchLanMultiplayer : MonoBehaviour
         guestAttacksSent = 0;
         guestAttacksReceived = 0;
         guestAttackHits = 0;
-        guestExtractsSent = 0;
-        guestExtractsReceived = 0;
-        guestExtractsAccepted = 0;
-        guestInteractionsSent = 0;
-        guestInteractionsReceived = 0;
-        guestInteractionsAccepted = 0;
         remoteDamageSent = 0;
         remoteDamageReceived = 0;
+        revivesSent = 0;
+        revivesReceived = 0;
+        reviveHoldTimer = 0f;
         lastNetworkEvent = "No multiplayer traffic yet";
 
         if (remotePlayer != null)
@@ -2435,7 +2046,6 @@ public class RanchLanMultiplayer : MonoBehaviour
         remotePlayerDead = false;
         remoteExtracting = false;
         hasRemotePlayerState = false;
-        guestExtractingVisualUntil = 0f;
         nextRemoteEnemyDamage = 0f;
 
         if (core != null &&
@@ -2512,25 +2122,22 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "  Hits: " + guestAttackHits + "\n" +
                 GetRemotePlayerStatusLine() +
                 "  Enemy hits: " + remoteDamageSent + "\n" +
-                "Guest extracts: " + guestExtractsReceived +
-                "  Accepted: " + guestExtractsAccepted + "\n" +
-                "Guest stations: " + guestInteractionsReceived +
-                "  Accepted: " + guestInteractionsAccepted + "\n" +
+                "Revives given/received: " + revivesReceived + "/" + revivesSent + "\n" +
                 "Last: " + lastNetworkEvent + "\n" +
                 (transportMode == TransportMode.DirectOnline
                     ? "Forward TCP " + DefaultPort + " to this computer."
                     : transportMode == TransportMode.Relay
                     ? "No port forwarding. Relay carries the connection."
-                    : "Host owns the ranch and save file.");
+                    : "Each player keeps their own ranch and save.");
         }
         else
         {
             body =
                 statusText + "\n" +
-                "Host Ranch: " + hostRawRanch.ToString("F0") +
+                "Teammate Ranch: " + hostRawRanch.ToString("F0") +
                 "  Total: " + hostTotalRanch.ToString("F0") +
                 "  $" + hostMoney.ToString("F0") + "\n" +
-                "Host Wave: " + hostWave +
+                "Teammate Wave: " + hostWave +
                 "  Enemies: " + hostEnemyCount + "\n" +
                 "Relay paired: " + (relayPaired ? "yes" : "no") +
                 "  Packets in/out: " + packetsReceived + "/" + packetsSent + "\n" +
@@ -2538,9 +2145,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "  Damage taken: " + remoteDamageReceived + "\n" +
                 "Moves sent: " + playerPacketsSent +
                 "  Attacks sent: " + guestAttacksSent + "\n" +
-                "Extracts sent: " + guestExtractsSent +
-                "  Station uses: " + guestInteractionsSent + "\n" +
-                "Guest: Hold E at tree. Press E at stations.";
+                "Revives given/received: " + revivesSent + "/" + revivesReceived + "\n" +
+                "You have your own ranch, shop & save. Hold E to revive.";
         }
 
         GUI.Label(

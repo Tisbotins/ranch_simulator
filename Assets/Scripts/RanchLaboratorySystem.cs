@@ -93,7 +93,8 @@ public class RanchLaboratorySystem : MonoBehaviour
         }
 
         if (IsOpen || core.Shop.IsOpen || core.Progression.IsOpen || core.Settings.IsOpen ||
-            (core.Classes != null && core.Classes.IsOpen) || core.GameWon || core.Health.IsDead)
+            (core.Classes != null && core.Classes.IsOpen) || core.GameWon ||
+            core.Health.IsDead || core.Health.IsDowned)
         {
             return;
         }
