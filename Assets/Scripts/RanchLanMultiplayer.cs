@@ -152,6 +152,15 @@ public class RanchLanMultiplayer : MonoBehaviour
     private float hostMoney;
     private int hostWave;
     private int hostEnemyCount;
+    private bool relayPaired;
+    private int packetsSent;
+    private int packetsReceived;
+    private int playerPacketsSent;
+    private int playerPacketsReceived;
+    private int guestAttacksSent;
+    private int guestAttacksReceived;
+    private int guestAttackHits;
+    private string lastNetworkEvent = "No multiplayer traffic yet";
 
     private GUIStyle panelStyle;
     private GUIStyle headingStyle;
@@ -184,6 +193,7 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         stopRequested = false;
         connected = false;
+        relayPaired = transportMode != TransportMode.Relay;
         statusText =
             (transportMode == TransportMode.DirectOnline
                 ? "Direct-online host listening on port "
@@ -243,6 +253,7 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         stopRequested = false;
         connected = false;
+        relayPaired = transportMode != TransportMode.Relay;
         statusText =
             "Connecting to " + address + ":" + port + "...";
 
@@ -308,6 +319,7 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         stopRequested = false;
         connected = false;
+        relayPaired = false;
         statusText =
             "Connecting to relay " + address + ":" + port +
             " room " + cleanedRoom + "...";
@@ -546,6 +558,10 @@ public class RanchLanMultiplayer : MonoBehaviour
             z = player.position.z,
             rotationY = player.eulerAngles.y
         });
+        guestAttacksSent++;
+        lastNetworkEvent =
+            "Guest attack sent " + guestAttacksSent +
+            (heavy ? " (heavy)" : " (light)");
     }
 
     private void ProcessIncomingPackets()
@@ -573,6 +589,7 @@ public class RanchLanMultiplayer : MonoBehaviour
             switch (packet.type)
             {
                 case "player":
+                    playerPacketsReceived++;
                     remotePlayerTargetPosition =
                         new Vector3(packet.x, packet.y, packet.z);
                     remotePlayerTargetRotation =
@@ -606,16 +623,23 @@ public class RanchLanMultiplayer : MonoBehaviour
 
     private void ProcessGuestAttack(LanPacket packet)
     {
+        guestAttacksReceived++;
         float now = Time.unscaledTime;
         float requiredDelay = packet.heavy ? 1.0f : 0.42f;
 
         if (now - lastHostAcceptedAttack < requiredDelay)
+        {
+            lastNetworkEvent = "Guest attack ignored by cooldown";
             return;
+        }
 
         lastHostAcceptedAttack = now;
 
         if (core.Waves == null)
+        {
+            lastNetworkEvent = "Guest attack received but waves are missing";
             return;
+        }
 
         Vector3 attackOrigin = hasRemotePlayerState
             ? remotePlayerTargetPosition
@@ -646,7 +670,18 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
 
         if (nearest != null)
+        {
+            guestAttackHits++;
             nearest.TakeDamage(damage, false, 0f);
+            lastNetworkEvent =
+                "Guest attack hit " + nearest.EnemyName +
+                " (" + guestAttackHits + " hits)";
+        }
+        else
+        {
+            lastNetworkEvent =
+                "Guest attack received but no enemy was in range";
+        }
     }
 
     private void ProcessEnemyPacket(LanPacket packet)
@@ -942,6 +977,10 @@ public class RanchLanMultiplayer : MonoBehaviour
         if (!connected || packet == null)
             return;
 
+        packetsSent++;
+        if (packet.type == "player")
+            playerPacketsSent++;
+
         outgoing.Enqueue(JsonUtility.ToJson(packet));
     }
 
@@ -1063,6 +1102,7 @@ public class RanchLanMultiplayer : MonoBehaviour
                 }
                 else if (line.Length > 0)
                 {
+                    packetsReceived++;
                     incoming.Enqueue(line);
                 }
             }
@@ -1082,15 +1122,20 @@ public class RanchLanMultiplayer : MonoBehaviour
     {
         if (line.IndexOf("|paired", StringComparison.OrdinalIgnoreCase) >= 0)
         {
+            relayPaired = true;
             statusText = "Relay peer connected";
+            lastNetworkEvent = "Relay paired both players";
         }
         else if (line.IndexOf("|waiting", StringComparison.OrdinalIgnoreCase) >= 0)
         {
+            relayPaired = false;
             statusText = "Connected to relay. Waiting for the other player.";
+            lastNetworkEvent = "Relay waiting for the other player";
         }
         else if (line.IndexOf("|room_full", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             statusText = "Relay room is full. Pick another room code.";
+            lastNetworkEvent = "Relay room was full";
         }
     }
 
@@ -1120,6 +1165,7 @@ public class RanchLanMultiplayer : MonoBehaviour
     private void MarkDisconnected()
     {
         connected = false;
+        relayPaired = false;
 
         if (!stopRequested)
             statusText =
@@ -1152,6 +1198,14 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         while (incoming.TryDequeue(out _)) { }
         while (outgoing.TryDequeue(out _)) { }
+        packetsSent = 0;
+        packetsReceived = 0;
+        playerPacketsSent = 0;
+        playerPacketsReceived = 0;
+        guestAttacksSent = 0;
+        guestAttacksReceived = 0;
+        guestAttackHits = 0;
+        lastNetworkEvent = "No multiplayer traffic yet";
 
         if (remotePlayer != null)
             Destroy(remotePlayer);
@@ -1190,7 +1244,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         GUI.depth = -900;
 
         float width = 390f;
-        float height = RanchGameModeState.IsLanClient ? 190f : 145f;
+        float height = RanchGameModeState.IsLanClient ? 230f : 205f;
         Rect panel = new Rect(
             Screen.width - width - 18f,
             18f,
@@ -1215,7 +1269,12 @@ public class RanchLanMultiplayer : MonoBehaviour
         {
             body =
                 statusText + "\n" +
-                "Address: " + localAddress + ":" + DefaultPort + "\n" +
+                "Relay paired: " + (relayPaired ? "yes" : "no") +
+                "  Packets in/out: " + packetsReceived + "/" + packetsSent + "\n" +
+                "Remote moves: " + playerPacketsReceived +
+                "  Guest attacks: " + guestAttacksReceived +
+                "  Hits: " + guestAttackHits + "\n" +
+                "Last: " + lastNetworkEvent + "\n" +
                 (transportMode == TransportMode.DirectOnline
                     ? "Forward TCP " + DefaultPort + " to this computer."
                     : transportMode == TransportMode.Relay
@@ -1231,6 +1290,10 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "  $" + hostMoney.ToString("F0") + "\n" +
                 "Host Wave: " + hostWave +
                 "  Enemies: " + hostEnemyCount + "\n" +
+                "Relay paired: " + (relayPaired ? "yes" : "no") +
+                "  Packets in/out: " + packetsReceived + "/" + packetsSent + "\n" +
+                "Moves sent: " + playerPacketsSent +
+                "  Attacks sent: " + guestAttacksSent + "\n" +
                 "Guest attacks: Left Click/Space, heavy: Q";
         }
 
