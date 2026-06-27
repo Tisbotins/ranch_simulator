@@ -390,6 +390,8 @@ public class RanchWorldBuilder : MonoBehaviour
         Transform spear = CreateSpear(handAnchor);
         Transform bow = CreateBow(handAnchor);
         Transform extractor = CreateExtractor(handAnchor);
+        Transform trap = CreateHeldTrap(handAnchor);
+        Transform wand = CreateWand(handAnchor);
 
         Camera camera = Camera.main;
         if (camera == null)
@@ -403,7 +405,7 @@ public class RanchWorldBuilder : MonoBehaviour
             player.AddComponent<RanchPlayerController>();
 
         playerController.Initialize(core, controller, camera);
-        core.Equipment.RegisterVisuals(extractor, sword, spear, bow);
+        core.Equipment.RegisterVisuals(extractor, sword, spear, bow, trap, wand);
         return playerController;
     }
 
@@ -534,6 +536,51 @@ public class RanchWorldBuilder : MonoBehaviour
         body.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
         CreatePrimitive(root.transform, PrimitiveType.Cube, "Extractor Nozzle", new Vector3(0f, 0f, 0.65f), new Vector3(0.14f, 0.14f, 0.8f), black, false);
         CreatePrimitive(root.transform, PrimitiveType.Cube, "Extractor Grip", new Vector3(0f, -0.34f, 0.05f), new Vector3(0.16f, 0.48f, 0.16f), brown, false);
+        return root.transform;
+    }
+
+    private Transform CreateHeldTrap(Transform anchor)
+    {
+        GameObject root = new GameObject("Held Ranch Trap");
+        root.transform.SetParent(anchor, false);
+        root.transform.localPosition = new Vector3(0f, 0.05f, 0.05f);
+        root.transform.localRotation = Quaternion.Euler(0f, 0f, -12f);
+
+        CreatePrimitive(root.transform, PrimitiveType.Cylinder, "Held Trap Base", Vector3.zero, new Vector3(0.42f, 0.10f, 0.42f), black, false);
+        for (int i = 0; i < 4; i++)
+        {
+            float angle = i * Mathf.PI * 2f / 4f;
+            Vector3 position =
+                new Vector3(Mathf.Cos(angle) * 0.30f, 0.16f, Mathf.Sin(angle) * 0.30f);
+            GameObject spike = CreatePrimitive(
+                root.transform,
+                PrimitiveType.Cube,
+                "Held Trap Spike " + i,
+                position,
+                new Vector3(0.08f, 0.28f, 0.08f),
+                yellow,
+                false
+            );
+            spike.transform.localRotation =
+                Quaternion.Euler(0f, -angle * Mathf.Rad2Deg, 0f) *
+                Quaternion.Euler(18f, 0f, 18f);
+        }
+
+        return root.transform;
+    }
+
+    private Transform CreateWand(Transform anchor)
+    {
+        GameObject root = new GameObject("Held Delulu Wand");
+        root.transform.SetParent(anchor, false);
+        root.transform.localPosition = new Vector3(0f, 0.06f, 0.06f);
+        root.transform.localRotation = Quaternion.Euler(18f, 0f, -18f);
+
+        GameObject shaft = CreatePrimitive(root.transform, PrimitiveType.Cylinder, "Wand Shaft", Vector3.zero, new Vector3(0.08f, 0.85f, 0.08f), purple, false);
+        shaft.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
+        CreatePrimitive(root.transform, PrimitiveType.Sphere, "Wand Core", new Vector3(0f, 0.55f, 0f), Vector3.one * 0.28f, ranch, false);
+        CreatePrimitive(root.transform, PrimitiveType.Cube, "Wand Grip", new Vector3(0f, -0.42f, 0f), new Vector3(0.15f, 0.30f, 0.15f), brown, false);
+
         return root.transform;
     }
 

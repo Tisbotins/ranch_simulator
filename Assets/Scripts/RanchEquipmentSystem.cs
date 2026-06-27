@@ -93,6 +93,8 @@ public class RanchEquipmentSystem : MonoBehaviour
     private Transform swordVisual;
     private Transform spearVisual;
     private Transform bowVisual;
+    private Transform trapVisual;
+    private Transform wandVisual;
     private bool extractionOverride;
 
     public void Initialize(RanchGameCore gameCore)
@@ -100,12 +102,20 @@ public class RanchEquipmentSystem : MonoBehaviour
         core = gameCore;
     }
 
-    public void RegisterVisuals(Transform extractor, Transform sword, Transform spear, Transform bow)
+    public void RegisterVisuals(
+        Transform extractor,
+        Transform sword,
+        Transform spear,
+        Transform bow,
+        Transform trap = null,
+        Transform wand = null)
     {
         extractorVisual = extractor;
         swordVisual = sword;
         spearVisual = spear;
         bowVisual = bow;
+        trapVisual = trap;
+        wandVisual = wand;
         RefreshVisuals();
     }
 
@@ -271,11 +281,15 @@ public class RanchEquipmentSystem : MonoBehaviour
     {
         bool showExtractor = extractionOverride || ActiveSlot == 0;
         bool showWeapon = !extractionOverride && ActiveSlot == 1 && CurrentClass != RanchClassType.Summoner;
+        bool showTrap = !extractionOverride && ActiveSlot == 2;
+        bool showWand = !extractionOverride && ActiveSlot == 1 && CurrentClass == RanchClassType.Summoner;
 
         SetVisible(extractorVisual, showExtractor);
         SetVisible(swordVisual, showWeapon && CurrentClass == RanchClassType.Sword);
         SetVisible(spearVisual, showWeapon && CurrentClass == RanchClassType.Spear);
         SetVisible(bowVisual, showWeapon && CurrentClass == RanchClassType.Ranged);
+        SetVisible(trapVisual, showTrap);
+        SetVisible(wandVisual, showWand);
     }
 
     private static void SetVisible(Transform target, bool visible)

@@ -62,6 +62,9 @@ public class RanchLanMultiplayer : MonoBehaviour
     private const float PlayerSendInterval = 0.05f;
     private const float EnemySendInterval = 0.10f;
     private const float SummarySendInterval = 0.50f;
+    private const float RemoteEnemyDamageRange = 2.15f;
+    private const float RemoteEnemyDamageInterval = 0.82f;
+    private const float GuestExtractStaminaPerSecond = 7f;
 
     [Serializable]
     private class LanPacket
@@ -76,9 +79,17 @@ public class RanchLanMultiplayer : MonoBehaviour
         public float rotationY;
         public float health;
         public float maxHealth;
+        public float stamina;
+        public float maxStamina;
+        public int activeSlot;
+        public int equippedWeapon;
+        public int classType;
+        public int combo;
         public int archetype;
         public bool boss;
         public bool heavy;
+        public bool dead;
+        public bool extracting;
         public float rawRanch;
         public float totalRanch;
         public float money;
@@ -127,6 +138,8 @@ public class RanchLanMultiplayer : MonoBehaviour
 
     private readonly object connectionLock = new object();
 
+    private static RanchLanMultiplayer activeInstance;
+
     private RanchGameCore core;
     private TcpListener listener;
     private TcpClient tcpClient;
@@ -143,20 +156,45 @@ public class RanchLanMultiplayer : MonoBehaviour
     private TransportMode transportMode = TransportMode.Lan;
 
     private GameObject remotePlayer;
+    private TextMesh remotePlayerLabel;
+    private Transform remoteEquipmentAnchor;
+    private Transform remoteExtractor;
+    private Transform remoteSword;
+    private Transform remoteSpear;
+    private Transform remoteBow;
+    private Transform remoteTrap;
+    private Transform remoteWand;
+    private Transform remoteAnimatedEquipment;
+    private Vector3 remoteEquipmentBasePosition;
+    private Quaternion remoteEquipmentBaseRotation = Quaternion.identity;
     private Vector3 remotePlayerTargetPosition;
     private Quaternion remotePlayerTargetRotation = Quaternion.identity;
+    private float remotePlayerHealth;
+    private float remotePlayerMaxHealth = 1f;
+    private float remotePlayerStamina;
+    private float remotePlayerMaxStamina = 1f;
+    private int remoteActiveSlot = 1;
+    private int remoteEquippedWeapon;
+    private int remoteClassType;
+    private bool remotePlayerDead;
+    private bool remoteExtracting;
     private bool hasRemotePlayerState;
     private bool clientRestrictionsApplied;
     private GameObject remoteAttackArc;
     private float remoteAttackTimer;
     private float remoteAttackDuration;
     private bool remoteAttackHeavy;
+    private float remoteEquipmentAnimationTimer;
+    private float remoteEquipmentAnimationDuration;
+    private bool remoteEquipmentAnimationHeavy;
+    private int remoteEquipmentAnimationCombo = 1;
 
     private float nextPlayerSend;
     private float nextEnemySend;
     private float nextSummarySend;
     private float nextGuestAttack;
-    private float nextHostAttackAnimation;
+    private float guestExtractingVisualUntil;
+    private float nextRemoteEnemyDamage;
     private float lastHostAcceptedAttack;
     private int enemyFrame;
 
@@ -179,6 +217,8 @@ public class RanchLanMultiplayer : MonoBehaviour
     private int guestInteractionsSent;
     private int guestInteractionsReceived;
     private int guestInteractionsAccepted;
+    private int remoteDamageSent;
+    private int remoteDamageReceived;
     private string lastNetworkEvent = "No multiplayer traffic yet";
 
     private GUIStyle panelStyle;
@@ -192,6 +232,36 @@ public class RanchLanMultiplayer : MonoBehaviour
     {
         core = gameCore;
         localAddress = FindLocalIPv4Address();
+        activeInstance = this;
+    }
+
+    public static void NotifyLocalAttackAnimation(bool heavy, int combo)
+    {
+        if (activeInstance != null)
+            activeInstance.SendLocalAttackAnimation(heavy, combo);
+    }
+
+    private void SendLocalAttackAnimation(bool heavy, int combo)
+    {
+        if (!connected ||
+            !RanchGameModeState.IsLanHost ||
+            core == null ||
+            core.Equipment == null)
+        {
+            return;
+        }
+
+        QueuePacket(new LanPacket
+        {
+            type = "attack_anim",
+            heavy = heavy,
+            combo = combo,
+            activeSlot = core.Equipment.ActiveSlot,
+            equippedWeapon = (int)core.Equipment.EquippedWeapon,
+            classType = core.Classes != null
+                ? (int)core.Classes.CurrentClass
+                : 0
+        });
     }
 
     public bool StartHost()
@@ -398,8 +468,6 @@ public class RanchLanMultiplayer : MonoBehaviour
 
             if (RanchGameModeState.IsLanHost)
             {
-                HandleHostAttackAnimationInput(now);
-
                 if (now >= nextEnemySend)
                 {
                     nextEnemySend = now + EnemySendInterval;
@@ -411,6 +479,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                     nextSummarySend = now + SummarySendInterval;
                     SendWorldSummary();
                 }
+
+                HandleRemoteGuestEnemyDamage(now);
             }
             else
             {
@@ -418,6 +488,7 @@ public class RanchLanMultiplayer : MonoBehaviour
                 HandleGuestAttackInput(now);
                 HandleGuestExtractInput();
                 HandleGuestInteractionInput();
+                UpdateGuestExtractionOverride();
             }
         }
 
@@ -466,7 +537,22 @@ public class RanchLanMultiplayer : MonoBehaviour
             x = player.position.x,
             y = player.position.y,
             z = player.position.z,
-            rotationY = player.eulerAngles.y
+            rotationY = player.eulerAngles.y,
+            health = core.Health != null ? core.Health.CurrentHealth : 0f,
+            maxHealth = core.Health != null ? core.Health.MaxHealth : 1f,
+            stamina = core.Stamina != null ? core.Stamina.CurrentStamina : 0f,
+            maxStamina = core.Stamina != null ? core.Stamina.MaximumStamina : 1f,
+            activeSlot = core.Equipment != null ? core.Equipment.ActiveSlot : 1,
+            equippedWeapon = core.Equipment != null
+                ? (int)core.Equipment.EquippedWeapon
+                : 0,
+            classType = core.Classes != null
+                ? (int)core.Classes.CurrentClass
+                : 0,
+            dead = core.Health != null && core.Health.IsDead,
+            extracting =
+                (core.Player != null && core.Player.IsExtracting) ||
+                Time.unscaledTime < guestExtractingVisualUntil
         });
     }
 
@@ -557,43 +643,14 @@ public class RanchLanMultiplayer : MonoBehaviour
         });
     }
 
-    private void HandleHostAttackAnimationInput(float now)
+    private void HandleGuestBottleSelectionInput()
     {
         if (!connected ||
-            now < nextHostAttackAnimation ||
-            core == null ||
-            core.Player == null ||
-            Cursor.visible ||
-            core.Settings == null ||
-            core.Settings.IsOpen ||
-            core.Health == null ||
-            core.Health.IsDead ||
-            core.GameWon)
+            core.Bottles == null ||
+            (core.Health != null && core.Health.IsDead))
         {
             return;
         }
-
-        bool light =
-            Input.GetMouseButtonDown(0) ||
-            Input.GetKeyDown(KeyCode.Space);
-
-        bool heavy = Input.GetKeyDown(KeyCode.Q);
-
-        if (!light && !heavy)
-            return;
-
-        nextHostAttackAnimation = now + (heavy ? 0.45f : 0.25f);
-        QueuePacket(new LanPacket
-        {
-            type = "attack_anim",
-            heavy = heavy
-        });
-    }
-
-    private void HandleGuestBottleSelectionInput()
-    {
-        if (!connected || core.Bottles == null)
-            return;
 
         int direction = 0;
         if (Input.GetKeyDown(KeyCode.LeftBracket))
@@ -620,6 +677,7 @@ public class RanchLanMultiplayer : MonoBehaviour
     private void HandleGuestAttackInput(float now)
     {
         if (!connected || core.Player == null || Cursor.visible ||
+            (core.Health != null && core.Health.IsDead) ||
             core.Settings == null || core.Settings.IsOpen)
             return;
 
@@ -635,6 +693,25 @@ public class RanchLanMultiplayer : MonoBehaviour
         if (!light && !heavy)
             return;
 
+        if (core.Equipment != null && !core.Equipment.WeaponSlotActive)
+        {
+            core.ShowMessage("Select your weapon slot to attack.");
+            return;
+        }
+
+        float staminaCost = GetGuestAttackStaminaCost(heavy);
+        if (core.Stamina != null &&
+            staminaCost > 0f &&
+            !core.Stamina.TrySpend(staminaCost))
+        {
+            core.ShowMessage(
+                heavy
+                    ? "Not enough stamina for a heavy attack."
+                    : "Not enough stamina for a light attack."
+            );
+            return;
+        }
+
         nextGuestAttack = now + (heavy ? 1.1f : 0.55f);
         Transform player = core.Player.transform;
 
@@ -647,6 +724,14 @@ public class RanchLanMultiplayer : MonoBehaviour
         {
             type = "attack",
             heavy = heavy,
+            combo = heavy ? 3 : 1,
+            activeSlot = core.Equipment != null ? core.Equipment.ActiveSlot : 1,
+            equippedWeapon = core.Equipment != null
+                ? (int)core.Equipment.EquippedWeapon
+                : 0,
+            classType = core.Classes != null
+                ? (int)core.Classes.CurrentClass
+                : 0,
             x = player.position.x,
             y = player.position.y,
             z = player.position.z,
@@ -658,10 +743,32 @@ public class RanchLanMultiplayer : MonoBehaviour
             (heavy ? " (heavy)" : " (light)");
     }
 
+    private float GetGuestAttackStaminaCost(bool heavy)
+    {
+        float staminaCost = heavy ? 30f : 10f;
+
+        if (core.Combat != null)
+        {
+            staminaCost = heavy
+                ? core.Combat.HeavyAttackStamina
+                : core.Combat.LightAttackStamina;
+        }
+
+        if (core.Equipment != null)
+        {
+            staminaCost *= heavy
+                ? core.Equipment.HeavyStaminaMultiplier
+                : core.Equipment.LightStaminaMultiplier;
+        }
+
+        return staminaCost;
+    }
+
     private void HandleGuestExtractInput()
     {
         if (!connected ||
             core.Player == null ||
+            (core.Health != null && core.Health.IsDead) ||
             core.RanchTreeTransform == null ||
             core.Settings == null ||
             core.Settings.IsOpen)
@@ -682,6 +789,16 @@ public class RanchLanMultiplayer : MonoBehaviour
         if (extractDelta <= 0f)
             return;
 
+        float staminaCost = GuestExtractStaminaPerSecond * extractDelta;
+        if (core.Stamina != null &&
+            staminaCost > 0f &&
+            !core.Stamina.TrySpend(staminaCost))
+        {
+            return;
+        }
+
+        guestExtractingVisualUntil = Time.unscaledTime + 0.12f;
+
         Transform player = core.Player.transform;
         QueuePacket(new LanPacket
         {
@@ -698,10 +815,21 @@ public class RanchLanMultiplayer : MonoBehaviour
             "Guest extract sent " + guestExtractsSent;
     }
 
+    private void UpdateGuestExtractionOverride()
+    {
+        if (core.Equipment == null)
+            return;
+
+        core.Equipment.SetExtractionOverride(
+            Time.unscaledTime < guestExtractingVisualUntil
+        );
+    }
+
     private void HandleGuestInteractionInput()
     {
         if (!connected ||
             core.Player == null ||
+            (core.Health != null && core.Health.IsDead) ||
             core.Settings == null ||
             core.Settings.IsOpen ||
             !Input.GetKeyDown(KeyCode.E))
@@ -793,8 +921,23 @@ public class RanchLanMultiplayer : MonoBehaviour
                         new Vector3(packet.x, packet.y, packet.z);
                     remotePlayerTargetRotation =
                         Quaternion.Euler(0f, packet.rotationY, 0f);
+                    remotePlayerHealth = packet.health;
+                    remotePlayerMaxHealth = Mathf.Max(1f, packet.maxHealth);
+                    remotePlayerStamina = packet.stamina;
+                    remotePlayerMaxStamina = Mathf.Max(1f, packet.maxStamina);
+                    remoteActiveSlot = Mathf.Clamp(
+                        packet.activeSlot,
+                        0,
+                        RanchEquipmentSystem.SlotCount - 1
+                    );
+                    remoteEquippedWeapon = Mathf.Clamp(packet.equippedWeapon, 0, 2);
+                    remoteClassType = Mathf.Clamp(packet.classType, 0, 3);
+                    remotePlayerDead = packet.dead;
+                    remoteExtracting = packet.extracting;
                     hasRemotePlayerState = true;
                     EnsureRemotePlayerVisual();
+                    UpdateRemotePlayerLabel();
+                    RefreshRemoteEquipmentVisuals();
                     break;
 
                 case "attack":
@@ -804,7 +947,15 @@ public class RanchLanMultiplayer : MonoBehaviour
 
                 case "attack_anim":
                     if (RanchGameModeState.IsLanClient)
-                        PlayRemoteAttackAnimation(packet.heavy);
+                    {
+                        ApplyRemoteEquipmentPacket(packet);
+                        PlayRemoteAttackAnimation(packet.heavy, packet.combo);
+                    }
+                    break;
+
+                case "damage":
+                    if (RanchGameModeState.IsLanClient)
+                        ProcessRemoteDamage(packet);
                     break;
 
                 case "extract":
@@ -848,7 +999,16 @@ public class RanchLanMultiplayer : MonoBehaviour
     private void ProcessGuestAttack(LanPacket packet)
     {
         guestAttacksReceived++;
-        PlayRemoteAttackAnimation(packet.heavy);
+
+        if (remotePlayerDead)
+        {
+            lastNetworkEvent = "Guest attack ignored: guest is defeated";
+            return;
+        }
+
+        ApplyRemoteEquipmentPacket(packet);
+        PlayRemoteAttackAnimation(packet.heavy, packet.combo);
+
         float now = Time.unscaledTime;
         float requiredDelay = packet.heavy ? 1.0f : 0.42f;
 
@@ -909,9 +1069,97 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
     }
 
+    private void ProcessRemoteDamage(LanPacket packet)
+    {
+        if (core.Health == null)
+            return;
+
+        remoteDamageReceived++;
+        string source = string.IsNullOrEmpty(packet.name)
+            ? "Remote Ranch Raider"
+            : packet.name;
+
+        core.Health.TakeDamage(
+            Mathf.Max(0f, packet.health),
+            source
+        );
+
+        if (core.Player != null)
+        {
+            Vector3 enemyPosition = new Vector3(packet.x, packet.y, packet.z);
+            Vector3 knockbackDirection =
+                core.Player.transform.position - enemyPosition;
+            core.Player.ApplyKnockback(knockbackDirection, 2.2f);
+        }
+
+        lastNetworkEvent =
+            "Damage received from host " + remoteDamageReceived + "x";
+    }
+
+    private void HandleRemoteGuestEnemyDamage(float now)
+    {
+        if (!hasRemotePlayerState ||
+            remotePlayerDead ||
+            core.Waves == null ||
+            now < nextRemoteEnemyDamage)
+        {
+            return;
+        }
+
+        List<RanchEnemy> active = core.Waves.ActiveEnemies;
+        RanchEnemy nearest = null;
+        float nearestDistance = float.MaxValue;
+
+        for (int i = 0; i < active.Count; i++)
+        {
+            RanchEnemy enemy = active[i];
+            if (enemy == null || enemy.Health <= 0f)
+                continue;
+
+            float hitRange = enemy.IsBoss
+                ? RemoteEnemyDamageRange + 1.25f
+                : RemoteEnemyDamageRange;
+
+            float distance = Vector3.Distance(
+                remotePlayerTargetPosition,
+                enemy.transform.position
+            );
+
+            if (distance <= hitRange && distance < nearestDistance)
+            {
+                nearest = enemy;
+                nearestDistance = distance;
+            }
+        }
+
+        if (nearest == null)
+            return;
+
+        nextRemoteEnemyDamage = now + RemoteEnemyDamageInterval;
+        remoteDamageSent++;
+        QueuePacket(new LanPacket
+        {
+            type = "damage",
+            name = nearest.EnemyName,
+            health = Mathf.Max(1f, nearest.Damage),
+            x = nearest.transform.position.x,
+            y = nearest.transform.position.y,
+            z = nearest.transform.position.z
+        });
+
+        lastNetworkEvent =
+            "Enemy hit guest " + remoteDamageSent + "x";
+    }
+
     private void ProcessGuestExtract(LanPacket packet)
     {
         guestExtractsReceived++;
+
+        if (remotePlayerDead)
+        {
+            lastNetworkEvent = "Guest extract ignored: guest is defeated";
+            return;
+        }
 
         if (core.Tree == null || core.RanchTreeTransform == null)
         {
@@ -970,6 +1218,12 @@ public class RanchLanMultiplayer : MonoBehaviour
     private void ProcessGuestStation(LanPacket packet)
     {
         guestInteractionsReceived++;
+
+        if (remotePlayerDead)
+        {
+            lastNetworkEvent = "Guest station ignored: guest is defeated";
+            return;
+        }
 
         RanchStationType stationType =
             (RanchStationType)Mathf.Clamp(
@@ -1039,6 +1293,12 @@ public class RanchLanMultiplayer : MonoBehaviour
     private void ProcessGuestAreaGate(LanPacket packet)
     {
         guestInteractionsReceived++;
+
+        if (remotePlayerDead)
+        {
+            lastNetworkEvent = "Guest gate ignored: guest is defeated";
+            return;
+        }
 
         int areaIndex = Mathf.Clamp(
             packet.areaIndex,
@@ -1275,24 +1535,283 @@ public class RanchLanMultiplayer : MonoBehaviour
         labelObject.transform.SetParent(remotePlayer.transform, false);
         labelObject.transform.localPosition = new Vector3(0f, 2.9f, 0f);
 
-        TextMesh label = labelObject.AddComponent<TextMesh>();
-        label.text = RanchGameModeState.IsLanHost
-            ? SessionLabel + " GUEST"
-            : SessionLabel + " HOST";
-        label.fontSize = 52;
-        label.characterSize = 0.075f;
-        label.anchor = TextAnchor.MiddleCenter;
-        label.alignment = TextAlignment.Center;
-        label.color = Color.white;
+        remotePlayerLabel = labelObject.AddComponent<TextMesh>();
+        remotePlayerLabel.fontSize = 52;
+        remotePlayerLabel.characterSize = 0.075f;
+        remotePlayerLabel.anchor = TextAnchor.MiddleCenter;
+        remotePlayerLabel.alignment = TextAlignment.Center;
+        remotePlayerLabel.color = Color.white;
         labelObject.AddComponent<RanchBillboard>();
+        UpdateRemotePlayerLabel();
 
         CreateRemoteAttackArc();
+        EnsureRemoteEquipmentVisuals();
+        RefreshRemoteEquipmentVisuals();
 
         if (hasRemotePlayerState)
         {
             remotePlayer.transform.position = remotePlayerTargetPosition;
             remotePlayer.transform.rotation = remotePlayerTargetRotation;
         }
+    }
+
+    private void UpdateRemotePlayerLabel()
+    {
+        if (remotePlayerLabel == null)
+            return;
+
+        string playerName = RanchGameModeState.IsLanHost
+            ? SessionLabel + " GUEST"
+            : SessionLabel + " HOST";
+
+        remotePlayerLabel.text =
+            playerName + "\n" +
+            "HP " +
+            Mathf.CeilToInt(Mathf.Max(0f, remotePlayerHealth)) +
+            "/" +
+            Mathf.CeilToInt(Mathf.Max(1f, remotePlayerMaxHealth)) +
+            "  STA " +
+            Mathf.CeilToInt(Mathf.Max(0f, remotePlayerStamina)) +
+            "/" +
+            Mathf.CeilToInt(Mathf.Max(1f, remotePlayerMaxStamina)) +
+            (remotePlayerDead ? "\nDEFEATED" : "");
+    }
+
+    private void ApplyRemoteEquipmentPacket(LanPacket packet)
+    {
+        remoteActiveSlot = Mathf.Clamp(
+            packet.activeSlot,
+            0,
+            RanchEquipmentSystem.SlotCount - 1
+        );
+        remoteEquippedWeapon = Mathf.Clamp(packet.equippedWeapon, 0, 2);
+        remoteClassType = Mathf.Clamp(packet.classType, 0, 3);
+        remoteExtracting = packet.extracting;
+
+        EnsureRemotePlayerVisual();
+        RefreshRemoteEquipmentVisuals();
+    }
+
+    private void EnsureRemoteEquipmentVisuals()
+    {
+        if (remotePlayer == null || remoteEquipmentAnchor != null)
+            return;
+
+        remoteEquipmentAnchor =
+            FindChildRecursive(remotePlayer.transform, "RightHandAnchor");
+
+        if (remoteEquipmentAnchor == null)
+        {
+            GameObject anchor = new GameObject("Remote Right Hand Equipment Anchor");
+            anchor.transform.SetParent(remotePlayer.transform, false);
+            anchor.transform.localPosition = new Vector3(0.72f, 0.05f, 0.05f);
+            remoteEquipmentAnchor = anchor.transform;
+        }
+
+        remoteSword = CreateRemoteSword(remoteEquipmentAnchor);
+        remoteSpear = CreateRemoteSpear(remoteEquipmentAnchor);
+        remoteBow = CreateRemoteBow(remoteEquipmentAnchor);
+        remoteExtractor = CreateRemoteExtractor(remoteEquipmentAnchor);
+        remoteTrap = CreateRemoteTrap(remoteEquipmentAnchor);
+        remoteWand = CreateRemoteWand(remoteEquipmentAnchor);
+    }
+
+    private void RefreshRemoteEquipmentVisuals()
+    {
+        EnsureRemoteEquipmentVisuals();
+
+        bool showExtractor = remoteExtracting || remoteActiveSlot == 0;
+        bool showWeapon =
+            !remoteExtracting &&
+            remoteActiveSlot == 1 &&
+            remoteClassType != (int)RanchClassType.Summoner;
+        bool showTrap = !remoteExtracting && remoteActiveSlot == 2;
+        bool showWand =
+            !remoteExtracting &&
+            remoteActiveSlot == 1 &&
+            remoteClassType == (int)RanchClassType.Summoner;
+
+        SetRemoteEquipmentVisible(remoteExtractor, showExtractor);
+        SetRemoteEquipmentVisible(
+            remoteSword,
+            showWeapon && remoteClassType == (int)RanchClassType.Sword
+        );
+        SetRemoteEquipmentVisible(
+            remoteSpear,
+            showWeapon && remoteClassType == (int)RanchClassType.Spear
+        );
+        SetRemoteEquipmentVisible(
+            remoteBow,
+            showWeapon && remoteClassType == (int)RanchClassType.Ranged
+        );
+        SetRemoteEquipmentVisible(remoteTrap, showTrap);
+        SetRemoteEquipmentVisible(remoteWand, showWand);
+
+        if (remoteAnimatedEquipment != null &&
+            !remoteAnimatedEquipment.gameObject.activeInHierarchy)
+        {
+            ResetRemoteEquipmentAnimation();
+        }
+    }
+
+    private static void SetRemoteEquipmentVisible(
+        Transform target,
+        bool visible)
+    {
+        if (target != null && target.gameObject.activeSelf != visible)
+            target.gameObject.SetActive(visible);
+    }
+
+    private Transform GetRemoteActiveWeaponVisual()
+    {
+        if (remoteActiveSlot != 1 ||
+            remoteClassType == (int)RanchClassType.Summoner)
+        {
+            return null;
+        }
+
+        switch ((RanchWeaponType)remoteEquippedWeapon)
+        {
+            case RanchWeaponType.Spear:
+                return remoteSpear;
+            case RanchWeaponType.Bow:
+                return remoteBow;
+            default:
+                return remoteSword;
+        }
+    }
+
+    private Transform CreateRemoteSword(Transform anchor)
+    {
+        GameObject root = CreateRemoteEquipmentRoot(
+            anchor,
+            "Remote Ranch Defender Sword",
+            Vector3.zero,
+            Quaternion.Euler(20f, 0f, -25f)
+        );
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Sword Blade", new Vector3(0f, 0.55f, 0f), new Vector3(0.12f, 1.2f, 0.08f), new Color(0.90f, 0.90f, 0.85f));
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Sword Handle", new Vector3(0f, -0.15f, 0f), new Vector3(0.18f, 0.35f, 0.14f), new Color(0.35f, 0.20f, 0.09f));
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Sword Guard", new Vector3(0f, 0.05f, 0f), new Vector3(0.55f, 0.08f, 0.12f), new Color(0.95f, 0.75f, 0.25f));
+        return root.transform;
+    }
+
+    private Transform CreateRemoteSpear(Transform anchor)
+    {
+        GameObject root = CreateRemoteEquipmentRoot(
+            anchor,
+            "Remote Ranch Spear",
+            new Vector3(0f, 0.15f, 0.1f),
+            Quaternion.Euler(75f, 0f, 0f)
+        );
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cylinder, "Remote Spear Shaft", new Vector3(0f, 0.8f, 0f), new Vector3(0.07f, 1.4f, 0.07f), new Color(0.35f, 0.20f, 0.09f));
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Spear Head", new Vector3(0f, 2.3f, 0f), new Vector3(0.22f, 0.48f, 0.10f), new Color(0.90f, 0.90f, 0.85f));
+        return root.transform;
+    }
+
+    private Transform CreateRemoteBow(Transform anchor)
+    {
+        GameObject root = CreateRemoteEquipmentRoot(
+            anchor,
+            "Remote Ranch Bow",
+            new Vector3(0f, 0.25f, 0.1f),
+            Quaternion.Euler(0f, 0f, -10f)
+        );
+        GameObject upper = CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Bow Upper Limb", new Vector3(0f, 0.75f, 0f), new Vector3(0.10f, 0.75f, 0.10f), new Color(0.35f, 0.20f, 0.09f));
+        upper.transform.localRotation = Quaternion.Euler(0f, 0f, -18f);
+        GameObject lower = CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Bow Lower Limb", new Vector3(0f, -0.75f, 0f), new Vector3(0.10f, 0.75f, 0.10f), new Color(0.35f, 0.20f, 0.09f));
+        lower.transform.localRotation = Quaternion.Euler(0f, 0f, 18f);
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Bow Grip", Vector3.zero, new Vector3(0.16f, 0.35f, 0.14f), new Color(0.05f, 0.05f, 0.05f));
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Bow String", Vector3.zero, new Vector3(0.025f, 1.55f, 0.025f), new Color(0.90f, 0.90f, 0.85f));
+        return root.transform;
+    }
+
+    private Transform CreateRemoteExtractor(Transform anchor)
+    {
+        GameObject root = CreateRemoteEquipmentRoot(
+            anchor,
+            "Remote Held Ranch Extractor",
+            new Vector3(0f, 0.05f, 0.05f),
+            Quaternion.Euler(0f, 0f, -8f)
+        );
+        GameObject body = CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cylinder, "Remote Extractor Body", Vector3.zero, new Vector3(0.23f, 0.55f, 0.23f), new Color(0.55f, 0.25f, 0.80f));
+        body.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Extractor Nozzle", new Vector3(0f, 0f, 0.65f), new Vector3(0.14f, 0.14f, 0.8f), new Color(0.05f, 0.05f, 0.05f));
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Extractor Grip", new Vector3(0f, -0.34f, 0.05f), new Vector3(0.16f, 0.48f, 0.16f), new Color(0.35f, 0.20f, 0.09f));
+        return root.transform;
+    }
+
+    private Transform CreateRemoteTrap(Transform anchor)
+    {
+        GameObject root = CreateRemoteEquipmentRoot(
+            anchor,
+            "Remote Held Ranch Trap",
+            new Vector3(0f, 0.05f, 0.05f),
+            Quaternion.Euler(0f, 0f, -12f)
+        );
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cylinder, "Remote Trap Base", Vector3.zero, new Vector3(0.42f, 0.10f, 0.42f), new Color(0.05f, 0.05f, 0.05f));
+        for (int i = 0; i < 4; i++)
+        {
+            float angle = i * Mathf.PI * 2f / 4f;
+            Vector3 position =
+                new Vector3(Mathf.Cos(angle) * 0.30f, 0.16f, Mathf.Sin(angle) * 0.30f);
+            GameObject spike = CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Trap Spike " + i, position, new Vector3(0.08f, 0.28f, 0.08f), new Color(0.95f, 0.75f, 0.25f));
+            spike.transform.localRotation =
+                Quaternion.Euler(0f, -angle * Mathf.Rad2Deg, 0f) *
+                Quaternion.Euler(18f, 0f, 18f);
+        }
+
+        return root.transform;
+    }
+
+    private Transform CreateRemoteWand(Transform anchor)
+    {
+        GameObject root = CreateRemoteEquipmentRoot(
+            anchor,
+            "Remote Held Delulu Wand",
+            new Vector3(0f, 0.06f, 0.06f),
+            Quaternion.Euler(18f, 0f, -18f)
+        );
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cylinder, "Remote Wand Shaft", Vector3.zero, new Vector3(0.08f, 0.85f, 0.08f), new Color(0.55f, 0.25f, 0.80f));
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Sphere, "Remote Wand Core", new Vector3(0f, 0.55f, 0f), Vector3.one * 0.28f, new Color(1f, 0.92f, 0.68f));
+        CreateRemoteEquipmentPiece(root.transform, PrimitiveType.Cube, "Remote Wand Grip", new Vector3(0f, -0.42f, 0f), new Vector3(0.15f, 0.30f, 0.15f), new Color(0.35f, 0.20f, 0.09f));
+        return root.transform;
+    }
+
+    private static GameObject CreateRemoteEquipmentRoot(
+        Transform anchor,
+        string name,
+        Vector3 localPosition,
+        Quaternion localRotation)
+    {
+        GameObject root = new GameObject(name);
+        root.transform.SetParent(anchor, false);
+        root.transform.localPosition = localPosition;
+        root.transform.localRotation = localRotation;
+        return root;
+    }
+
+    private static GameObject CreateRemoteEquipmentPiece(
+        Transform parent,
+        PrimitiveType type,
+        string name,
+        Vector3 localPosition,
+        Vector3 localScale,
+        Color color)
+    {
+        GameObject piece = GameObject.CreatePrimitive(type);
+        piece.name = name;
+        piece.transform.SetParent(parent, false);
+        piece.transform.localPosition = localPosition;
+        piece.transform.localScale = localScale;
+        Renderer renderer = piece.GetComponent<Renderer>();
+        if (renderer != null)
+            renderer.sharedMaterial = RanchWorldBuilder.CreateRuntimeMaterial(color);
+
+        Collider collider = piece.GetComponent<Collider>();
+        if (collider != null)
+            Destroy(collider);
+
+        return piece;
     }
 
     private void CreateRemoteAttackArc()
@@ -1326,10 +1845,11 @@ public class RanchLanMultiplayer : MonoBehaviour
         remoteAttackArc.SetActive(false);
     }
 
-    private void PlayRemoteAttackAnimation(bool heavy)
+    private void PlayRemoteAttackAnimation(bool heavy, int combo)
     {
         EnsureRemotePlayerVisual();
         CreateRemoteAttackArc();
+        StartRemoteEquipmentAttackAnimation(heavy, combo);
 
         remoteAttackHeavy = heavy;
         remoteAttackDuration = heavy ? 0.42f : 0.26f;
@@ -1339,11 +1859,46 @@ public class RanchLanMultiplayer : MonoBehaviour
             remoteAttackArc.SetActive(true);
     }
 
-    private void UpdateRemoteAttackAnimation()
+    private void StartRemoteEquipmentAttackAnimation(bool heavy, int combo)
     {
-        if (remoteAttackArc == null || remoteAttackTimer <= 0f)
+        Transform weapon = GetRemoteActiveWeaponVisual();
+        if (weapon == null)
             return;
 
+        if (remoteAnimatedEquipment != null &&
+            remoteAnimatedEquipment != weapon)
+        {
+            ResetRemoteEquipmentAnimation();
+        }
+
+        remoteAnimatedEquipment = weapon;
+        remoteEquipmentBasePosition = weapon.localPosition;
+        remoteEquipmentBaseRotation = weapon.localRotation;
+        remoteEquipmentAnimationHeavy = heavy;
+        remoteEquipmentAnimationCombo = Mathf.Max(1, combo);
+        remoteEquipmentAnimationDuration = heavy ? 0.75f : 0.32f;
+        remoteEquipmentAnimationTimer = remoteEquipmentAnimationDuration;
+    }
+
+    private void UpdateRemoteAttackAnimation()
+    {
+        bool animateArc = remoteAttackArc != null && remoteAttackTimer > 0f;
+        bool animateEquipment =
+            remoteAnimatedEquipment != null &&
+            remoteEquipmentAnimationTimer > 0f;
+
+        if (!animateArc && !animateEquipment)
+            return;
+
+        if (animateArc)
+            UpdateRemoteAttackArc();
+
+        if (animateEquipment)
+            UpdateRemoteEquipmentAttackAnimation();
+    }
+
+    private void UpdateRemoteAttackArc()
+    {
         remoteAttackTimer -= Time.unscaledDeltaTime;
         float duration = Mathf.Max(0.01f, remoteAttackDuration);
         float progress = 1f - Mathf.Clamp01(remoteAttackTimer / duration);
@@ -1363,6 +1918,85 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         if (remoteAttackTimer <= 0f)
             remoteAttackArc.SetActive(false);
+    }
+
+    private void UpdateRemoteEquipmentAttackAnimation()
+    {
+        remoteEquipmentAnimationTimer -= Time.unscaledDeltaTime;
+        float duration = Mathf.Max(0.01f, remoteEquipmentAnimationDuration);
+        float progress =
+            1f - Mathf.Clamp01(remoteEquipmentAnimationTimer / duration);
+        float pulse = Mathf.Sin(progress * Mathf.PI);
+
+        switch ((RanchWeaponType)remoteEquippedWeapon)
+        {
+            case RanchWeaponType.Spear:
+                remoteAnimatedEquipment.localPosition =
+                    remoteEquipmentBasePosition +
+                    Vector3.forward *
+                    pulse *
+                    (remoteEquipmentAnimationHeavy ? 1.2f : 0.7f);
+                remoteAnimatedEquipment.localRotation =
+                    remoteEquipmentBaseRotation *
+                    Quaternion.Euler(-pulse * 12f, 0f, 0f);
+                break;
+
+            case RanchWeaponType.Bow:
+                remoteAnimatedEquipment.localPosition =
+                    remoteEquipmentBasePosition + Vector3.back * pulse * 0.18f;
+                remoteAnimatedEquipment.localRotation =
+                    remoteEquipmentBaseRotation *
+                    Quaternion.Euler(0f, pulse * 8f, 0f);
+                break;
+
+            default:
+                float angle = remoteEquipmentAnimationHeavy
+                    ? 145f
+                    : 75f + remoteEquipmentAnimationCombo * 10f;
+                remoteAnimatedEquipment.localPosition =
+                    remoteEquipmentBasePosition;
+                remoteAnimatedEquipment.localRotation =
+                    remoteEquipmentBaseRotation *
+                    Quaternion.Euler(pulse * angle, 0f, 0f);
+                break;
+        }
+
+        if (remoteEquipmentAnimationTimer <= 0f)
+            ResetRemoteEquipmentAnimation();
+    }
+
+    private void ResetRemoteEquipmentAnimation()
+    {
+        if (remoteAnimatedEquipment != null)
+        {
+            remoteAnimatedEquipment.localPosition = remoteEquipmentBasePosition;
+            remoteAnimatedEquipment.localRotation = remoteEquipmentBaseRotation;
+        }
+
+        remoteAnimatedEquipment = null;
+        remoteEquipmentAnimationTimer = 0f;
+    }
+
+    private static Transform FindChildRecursive(
+        Transform root,
+        string childName)
+    {
+        if (root == null)
+            return null;
+
+        if (root.name == childName)
+            return root;
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform result =
+                FindChildRecursive(root.GetChild(i), childName);
+
+            if (result != null)
+                return result;
+        }
+
+        return null;
     }
 
     private static void StripRemoteModelComponents(GameObject model)
@@ -1772,14 +2406,44 @@ public class RanchLanMultiplayer : MonoBehaviour
         guestInteractionsSent = 0;
         guestInteractionsReceived = 0;
         guestInteractionsAccepted = 0;
+        remoteDamageSent = 0;
+        remoteDamageReceived = 0;
         lastNetworkEvent = "No multiplayer traffic yet";
 
         if (remotePlayer != null)
             Destroy(remotePlayer);
         remotePlayer = null;
+        remotePlayerLabel = null;
+        remoteEquipmentAnchor = null;
+        remoteExtractor = null;
+        remoteSword = null;
+        remoteSpear = null;
+        remoteBow = null;
+        remoteTrap = null;
+        remoteWand = null;
+        remoteAnimatedEquipment = null;
         remoteAttackArc = null;
         remoteAttackTimer = 0f;
+        remoteEquipmentAnimationTimer = 0f;
+        remotePlayerHealth = 0f;
+        remotePlayerMaxHealth = 1f;
+        remotePlayerStamina = 0f;
+        remotePlayerMaxStamina = 1f;
+        remoteActiveSlot = 1;
+        remoteEquippedWeapon = 0;
+        remoteClassType = 0;
+        remotePlayerDead = false;
+        remoteExtracting = false;
         hasRemotePlayerState = false;
+        guestExtractingVisualUntil = 0f;
+        nextRemoteEnemyDamage = 0f;
+
+        if (core != null &&
+            core.Equipment != null &&
+            RanchGameModeState.IsLanClient)
+        {
+            core.Equipment.SetExtractionOverride(false);
+        }
 
         foreach (RemoteEnemyVisual visual in remoteEnemies.Values)
         {
@@ -1794,6 +2458,9 @@ public class RanchLanMultiplayer : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (activeInstance == this)
+            activeInstance = null;
+
         ShutdownConnection(false);
     }
 
@@ -1813,7 +2480,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         GUI.depth = -900;
 
         float width = 390f;
-        float height = RanchGameModeState.IsLanClient ? 265f : 245f;
+        float height = RanchGameModeState.IsLanClient ? 285f : 270f;
         Rect panel = new Rect(
             Screen.width - width - 18f,
             18f,
@@ -1843,6 +2510,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "Remote moves: " + playerPacketsReceived +
                 "  Guest attacks: " + guestAttacksReceived +
                 "  Hits: " + guestAttackHits + "\n" +
+                GetRemotePlayerStatusLine() +
+                "  Enemy hits: " + remoteDamageSent + "\n" +
                 "Guest extracts: " + guestExtractsReceived +
                 "  Accepted: " + guestExtractsAccepted + "\n" +
                 "Guest stations: " + guestInteractionsReceived +
@@ -1865,6 +2534,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "  Enemies: " + hostEnemyCount + "\n" +
                 "Relay paired: " + (relayPaired ? "yes" : "no") +
                 "  Packets in/out: " + packetsReceived + "/" + packetsSent + "\n" +
+                GetRemotePlayerStatusLine() +
+                "  Damage taken: " + remoteDamageReceived + "\n" +
                 "Moves sent: " + playerPacketsSent +
                 "  Attacks sent: " + guestAttacksSent + "\n" +
                 "Extracts sent: " + guestExtractsSent +
@@ -1885,6 +2556,23 @@ public class RanchLanMultiplayer : MonoBehaviour
         );
 
         GUI.depth = oldDepth;
+    }
+
+    private string GetRemotePlayerStatusLine()
+    {
+        if (!hasRemotePlayerState)
+            return "Remote player: waiting";
+
+        return
+            "Remote HP: " +
+            Mathf.CeilToInt(Mathf.Max(0f, remotePlayerHealth)) +
+            "/" +
+            Mathf.CeilToInt(Mathf.Max(1f, remotePlayerMaxHealth)) +
+            "  STA: " +
+            Mathf.CeilToInt(Mathf.Max(0f, remotePlayerStamina)) +
+            "/" +
+            Mathf.CeilToInt(Mathf.Max(1f, remotePlayerMaxStamina)) +
+            (remotePlayerDead ? "  DOWN" : "");
     }
 
     private void EnsureStyles()

@@ -65,16 +65,17 @@ public class RanchPlayerController : MonoBehaviour
             return;
         }
 
-        // In the first LAN experiment, the guest is a movement/combat helper.
-        // Ranch state, shops, interactions, waves, and saving remain host-owned.
+        // LAN guests own their local movement/equipment presentation while
+        // ranch state, shops, waves, rewards, and saving stay host-owned.
         if (RanchGameModeState.IsLanClient)
         {
             CurrentPrompt = "";
             IsExtracting = false;
-            core.Equipment.SetExtractionOverride(false);
             HandleCursor();
+            HandleEquipmentSlots();
             HandleMovement();
             UpdateCamera();
+            UpdateWeaponAnimation();
             UpdateSafetyPosition();
             return;
         }
@@ -200,6 +201,7 @@ public class RanchPlayerController : MonoBehaviour
         heavyAnimation = heavy;
         animationCombo = combo;
         weaponAnimation = heavy ? 0.75f : 0.32f;
+        RanchLanMultiplayer.NotifyLocalAttackAnimation(heavy, combo);
     }
 
     private void UpdateWeaponAnimation()
