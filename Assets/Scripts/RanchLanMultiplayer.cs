@@ -84,6 +84,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         public float money;
         public int wave;
         public int enemyCount;
+        public float deltaTime;
         public int[] bottleCounts;
         public bool area0;
         public bool area1;
@@ -160,6 +161,9 @@ public class RanchLanMultiplayer : MonoBehaviour
     private int guestAttacksSent;
     private int guestAttacksReceived;
     private int guestAttackHits;
+    private int guestExtractsSent;
+    private int guestExtractsReceived;
+    private int guestExtractsAccepted;
     private string lastNetworkEvent = "No multiplayer traffic yet";
 
     private GUIStyle panelStyle;
@@ -393,6 +397,7 @@ public class RanchLanMultiplayer : MonoBehaviour
             else
             {
                 HandleGuestAttackInput(now);
+                HandleGuestExtractInput();
             }
         }
 
@@ -564,6 +569,46 @@ public class RanchLanMultiplayer : MonoBehaviour
             (heavy ? " (heavy)" : " (light)");
     }
 
+    private void HandleGuestExtractInput()
+    {
+        if (!connected ||
+            core.Player == null ||
+            core.RanchTreeTransform == null ||
+            core.Settings == null ||
+            core.Settings.IsOpen)
+        {
+            return;
+        }
+
+        bool nearTree =
+            Vector3.Distance(
+                core.Player.transform.position,
+                core.RanchTreeTransform.position
+            ) <= core.Player.InteractionRange + 0.75f;
+
+        if (!nearTree || !Input.GetKey(KeyCode.E))
+            return;
+
+        float extractDelta = Mathf.Min(Time.deltaTime, 0.05f);
+        if (extractDelta <= 0f)
+            return;
+
+        Transform player = core.Player.transform;
+        QueuePacket(new LanPacket
+        {
+            type = "extract",
+            deltaTime = extractDelta,
+            x = player.position.x,
+            y = player.position.y,
+            z = player.position.z,
+            rotationY = player.eulerAngles.y
+        });
+
+        guestExtractsSent++;
+        lastNetworkEvent =
+            "Guest extract sent " + guestExtractsSent;
+    }
+
     private void ProcessIncomingPackets()
     {
         int processed = 0;
@@ -601,6 +646,11 @@ public class RanchLanMultiplayer : MonoBehaviour
                 case "attack":
                     if (RanchGameModeState.IsLanHost)
                         ProcessGuestAttack(packet);
+                    break;
+
+                case "extract":
+                    if (RanchGameModeState.IsLanHost)
+                        ProcessGuestExtract(packet);
                     break;
 
                 case "enemy":
@@ -682,6 +732,42 @@ public class RanchLanMultiplayer : MonoBehaviour
             lastNetworkEvent =
                 "Guest attack received but no enemy was in range";
         }
+    }
+
+    private void ProcessGuestExtract(LanPacket packet)
+    {
+        guestExtractsReceived++;
+
+        if (core.Tree == null || core.RanchTreeTransform == null)
+        {
+            lastNetworkEvent = "Guest extract received but tree is missing";
+            return;
+        }
+
+        Vector3 extractOrigin = hasRemotePlayerState
+            ? remotePlayerTargetPosition
+            : new Vector3(packet.x, packet.y, packet.z);
+
+        float distance = Vector3.Distance(
+            extractOrigin,
+            core.RanchTreeTransform.position
+        );
+
+        if (distance > 4.25f)
+        {
+            lastNetworkEvent =
+                "Guest extract rejected: too far from tree";
+            return;
+        }
+
+        float extractDelta = Mathf.Clamp(packet.deltaTime, 0f, 0.05f);
+        if (extractDelta <= 0f)
+            return;
+
+        core.Tree.Extract(extractDelta);
+        guestExtractsAccepted++;
+        lastNetworkEvent =
+            "Guest extracted ranch " + guestExtractsAccepted + "x";
     }
 
     private void ProcessEnemyPacket(LanPacket packet)
@@ -1205,6 +1291,9 @@ public class RanchLanMultiplayer : MonoBehaviour
         guestAttacksSent = 0;
         guestAttacksReceived = 0;
         guestAttackHits = 0;
+        guestExtractsSent = 0;
+        guestExtractsReceived = 0;
+        guestExtractsAccepted = 0;
         lastNetworkEvent = "No multiplayer traffic yet";
 
         if (remotePlayer != null)
@@ -1274,6 +1363,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "Remote moves: " + playerPacketsReceived +
                 "  Guest attacks: " + guestAttacksReceived +
                 "  Hits: " + guestAttackHits + "\n" +
+                "Guest extracts: " + guestExtractsReceived +
+                "  Accepted: " + guestExtractsAccepted + "\n" +
                 "Last: " + lastNetworkEvent + "\n" +
                 (transportMode == TransportMode.DirectOnline
                     ? "Forward TCP " + DefaultPort + " to this computer."
@@ -1294,7 +1385,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "  Packets in/out: " + packetsReceived + "/" + packetsSent + "\n" +
                 "Moves sent: " + playerPacketsSent +
                 "  Attacks sent: " + guestAttacksSent + "\n" +
-                "Guest attacks: Left Click/Space, heavy: Q";
+                "Extracts sent: " + guestExtractsSent + "\n" +
+                "Guest: Hold E at tree. Attack: Click/Space, Q";
         }
 
         GUI.Label(
