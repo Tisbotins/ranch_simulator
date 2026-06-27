@@ -85,7 +85,14 @@ public class RanchLanMultiplayer : MonoBehaviour
         public int wave;
         public int enemyCount;
         public float deltaTime;
+        public int stationType;
+        public int areaIndex;
+        public int bottleTier;
+        public bool modifier;
         public int[] bottleCounts;
+        public int unlockedBottleTier;
+        public int selectedBottleTier;
+        public int toolTier;
         public bool area0;
         public bool area1;
         public bool area2;
@@ -140,11 +147,16 @@ public class RanchLanMultiplayer : MonoBehaviour
     private Quaternion remotePlayerTargetRotation = Quaternion.identity;
     private bool hasRemotePlayerState;
     private bool clientRestrictionsApplied;
+    private GameObject remoteAttackArc;
+    private float remoteAttackTimer;
+    private float remoteAttackDuration;
+    private bool remoteAttackHeavy;
 
     private float nextPlayerSend;
     private float nextEnemySend;
     private float nextSummarySend;
     private float nextGuestAttack;
+    private float nextHostAttackAnimation;
     private float lastHostAcceptedAttack;
     private int enemyFrame;
 
@@ -164,6 +176,9 @@ public class RanchLanMultiplayer : MonoBehaviour
     private int guestExtractsSent;
     private int guestExtractsReceived;
     private int guestExtractsAccepted;
+    private int guestInteractionsSent;
+    private int guestInteractionsReceived;
+    private int guestInteractionsAccepted;
     private string lastNetworkEvent = "No multiplayer traffic yet";
 
     private GUIStyle panelStyle;
@@ -369,6 +384,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         ProcessIncomingPackets();
         UpdateRemotePlayerVisual();
         UpdateRemoteEnemyVisuals();
+        UpdateRemoteAttackAnimation();
 
         if (connected)
         {
@@ -382,6 +398,8 @@ public class RanchLanMultiplayer : MonoBehaviour
 
             if (RanchGameModeState.IsLanHost)
             {
+                HandleHostAttackAnimationInput(now);
+
                 if (now >= nextEnemySend)
                 {
                     nextEnemySend = now + EnemySendInterval;
@@ -396,8 +414,10 @@ public class RanchLanMultiplayer : MonoBehaviour
             }
             else
             {
+                HandleGuestBottleSelectionInput();
                 HandleGuestAttackInput(now);
                 HandleGuestExtractInput();
+                HandleGuestInteractionInput();
             }
         }
 
@@ -521,11 +541,80 @@ public class RanchLanMultiplayer : MonoBehaviour
             bottleCounts = core.Inventory != null
                 ? core.Inventory.GetBottleCountsCopy()
                 : null,
+            unlockedBottleTier = core.Bottles != null
+                ? core.Bottles.UnlockedTier
+                : 0,
+            selectedBottleTier = core.Bottles != null
+                ? core.Bottles.SelectedTier
+                : 0,
+            toolTier = core.Upgrades != null
+                ? core.Upgrades.ToolTier
+                : 0,
             area0 = areas != null && areas.Length > 0 && areas[0],
             area1 = areas != null && areas.Length > 1 && areas[1],
             area2 = areas != null && areas.Length > 2 && areas[2],
             area3 = areas != null && areas.Length > 3 && areas[3]
         });
+    }
+
+    private void HandleHostAttackAnimationInput(float now)
+    {
+        if (!connected ||
+            now < nextHostAttackAnimation ||
+            core == null ||
+            core.Player == null ||
+            Cursor.visible ||
+            core.Settings == null ||
+            core.Settings.IsOpen ||
+            core.Health == null ||
+            core.Health.IsDead ||
+            core.GameWon)
+        {
+            return;
+        }
+
+        bool light =
+            Input.GetMouseButtonDown(0) ||
+            Input.GetKeyDown(KeyCode.Space);
+
+        bool heavy = Input.GetKeyDown(KeyCode.Q);
+
+        if (!light && !heavy)
+            return;
+
+        nextHostAttackAnimation = now + (heavy ? 0.45f : 0.25f);
+        QueuePacket(new LanPacket
+        {
+            type = "attack_anim",
+            heavy = heavy
+        });
+    }
+
+    private void HandleGuestBottleSelectionInput()
+    {
+        if (!connected || core.Bottles == null)
+            return;
+
+        int direction = 0;
+        if (Input.GetKeyDown(KeyCode.LeftBracket))
+            direction = -1;
+        else if (Input.GetKeyDown(KeyCode.RightBracket))
+            direction = 1;
+
+        if (direction == 0)
+            return;
+
+        core.Bottles.CycleSelection(direction);
+
+        QueuePacket(new LanPacket
+        {
+            type = "select_bottle",
+            bottleTier = core.Bottles.SelectedTier
+        });
+
+        lastNetworkEvent =
+            "Guest selected " +
+            core.Bottles.GetTierName(core.Bottles.SelectedTier);
     }
 
     private void HandleGuestAttackInput(float now)
@@ -609,6 +698,71 @@ public class RanchLanMultiplayer : MonoBehaviour
             "Guest extract sent " + guestExtractsSent;
     }
 
+    private void HandleGuestInteractionInput()
+    {
+        if (!connected ||
+            core.Player == null ||
+            core.Settings == null ||
+            core.Settings.IsOpen ||
+            !Input.GetKeyDown(KeyCode.E))
+        {
+            return;
+        }
+
+        RanchInteractable interactable =
+            FindNearestInteractable(core.Player.transform.position);
+
+        if (interactable == null ||
+            interactable is RanchTreeInteractable)
+        {
+            return;
+        }
+
+        bool modifier =
+            Input.GetKey(KeyCode.LeftShift) ||
+            Input.GetKey(KeyCode.RightShift);
+
+        RanchStation station = interactable as RanchStation;
+        if (station != null)
+        {
+            QueuePacket(new LanPacket
+            {
+                type = "station",
+                stationType = (int)station.StationType,
+                modifier = modifier,
+                x = core.Player.transform.position.x,
+                y = core.Player.transform.position.y,
+                z = core.Player.transform.position.z
+            });
+
+            guestInteractionsSent++;
+            lastNetworkEvent =
+                "Guest station request: " + station.StationType;
+            return;
+        }
+
+        RanchAreaGate areaGate = interactable as RanchAreaGate;
+        if (areaGate != null)
+        {
+            QueuePacket(new LanPacket
+            {
+                type = "area_gate",
+                areaIndex = areaGate.AreaIndex,
+                x = core.Player.transform.position.x,
+                y = core.Player.transform.position.y,
+                z = core.Player.transform.position.z
+            });
+
+            guestInteractionsSent++;
+            lastNetworkEvent =
+                "Guest area gate request: " + areaGate.AreaIndex;
+            return;
+        }
+
+        lastNetworkEvent =
+            "That guest interaction is host-only for now";
+    }
+
     private void ProcessIncomingPackets()
     {
         int processed = 0;
@@ -648,9 +802,29 @@ public class RanchLanMultiplayer : MonoBehaviour
                         ProcessGuestAttack(packet);
                     break;
 
+                case "attack_anim":
+                    if (RanchGameModeState.IsLanClient)
+                        PlayRemoteAttackAnimation(packet.heavy);
+                    break;
+
                 case "extract":
                     if (RanchGameModeState.IsLanHost)
                         ProcessGuestExtract(packet);
+                    break;
+
+                case "select_bottle":
+                    if (RanchGameModeState.IsLanHost)
+                        ProcessGuestBottleSelection(packet);
+                    break;
+
+                case "station":
+                    if (RanchGameModeState.IsLanHost)
+                        ProcessGuestStation(packet);
+                    break;
+
+                case "area_gate":
+                    if (RanchGameModeState.IsLanHost)
+                        ProcessGuestAreaGate(packet);
                     break;
 
                 case "enemy":
@@ -674,6 +848,7 @@ public class RanchLanMultiplayer : MonoBehaviour
     private void ProcessGuestAttack(LanPacket packet)
     {
         guestAttacksReceived++;
+        PlayRemoteAttackAnimation(packet.heavy);
         float now = Time.unscaledTime;
         float requiredDelay = packet.heavy ? 1.0f : 0.42f;
 
@@ -770,6 +945,132 @@ public class RanchLanMultiplayer : MonoBehaviour
             "Guest extracted ranch " + guestExtractsAccepted + "x";
     }
 
+    private void ProcessGuestBottleSelection(LanPacket packet)
+    {
+        if (core.Bottles == null)
+            return;
+
+        int tier = Mathf.Clamp(
+            packet.bottleTier,
+            0,
+            RanchBottleSystem.TierCount - 1
+        );
+
+        if (!core.Bottles.IsUnlocked(tier))
+        {
+            lastNetworkEvent = "Guest selected a locked bottle tier";
+            return;
+        }
+
+        core.Bottles.SelectTier(tier);
+        lastNetworkEvent =
+            "Guest selected " + core.Bottles.GetTierName(tier);
+    }
+
+    private void ProcessGuestStation(LanPacket packet)
+    {
+        guestInteractionsReceived++;
+
+        RanchStationType stationType =
+            (RanchStationType)Mathf.Clamp(
+                packet.stationType,
+                0,
+                (int)RanchStationType.Shop
+            );
+
+        Vector3 origin = hasRemotePlayerState
+            ? remotePlayerTargetPosition
+            : new Vector3(packet.x, packet.y, packet.z);
+
+        RanchStation station = FindNearestStation(origin, stationType);
+        if (station == null)
+        {
+            lastNetworkEvent =
+                "Guest " + stationType + " rejected: too far";
+            return;
+        }
+
+        switch (stationType)
+        {
+            case RanchStationType.Bottle:
+                if (packet.modifier)
+                    core.Bottles.BottleAllSelected();
+                else
+                    core.Bottles.TryBottleSelected();
+                break;
+
+            case RanchStationType.Sell:
+                if (packet.modifier)
+                    core.Bottles.SellAllSelected();
+                else
+                    core.Bottles.SellOneSelected();
+                break;
+
+            case RanchStationType.BottleUpgrade:
+                core.Upgrades.BuyNextBottleTier();
+                break;
+
+            case RanchStationType.ToolUpgrade:
+                core.Upgrades.BuyNextToolTier();
+                break;
+
+            case RanchStationType.Drew:
+                core.Drew.HireOrUpgrade();
+                break;
+
+            case RanchStationType.CJGate:
+                core.CJ.ChallengeCJ();
+                break;
+
+            case RanchStationType.Shop:
+                core.ShowMessage(
+                    "Guest reached the Ranch Empire Shop. Full shop menus are host-only for now.",
+                    6f
+                );
+                break;
+        }
+
+        guestInteractionsAccepted++;
+        lastNetworkEvent =
+            "Guest used " + stationType +
+            " (" + guestInteractionsAccepted + " accepted)";
+    }
+
+    private void ProcessGuestAreaGate(LanPacket packet)
+    {
+        guestInteractionsReceived++;
+
+        int areaIndex = Mathf.Clamp(
+            packet.areaIndex,
+            0,
+            RanchAreaSystem.AreaCount - 1
+        );
+
+        Vector3 origin = hasRemotePlayerState
+            ? remotePlayerTargetPosition
+            : new Vector3(packet.x, packet.y, packet.z);
+
+        RanchAreaGate gate = FindNearestAreaGate(origin, areaIndex);
+        if (gate == null)
+        {
+            lastNetworkEvent =
+                "Guest area gate rejected: too far";
+            return;
+        }
+
+        if (core.Areas.TryUnlock(areaIndex))
+        {
+            guestInteractionsAccepted++;
+            lastNetworkEvent =
+                "Guest opened area gate " + areaIndex;
+        }
+        else
+        {
+            lastNetworkEvent =
+                "Guest area gate request denied by requirements";
+        }
+    }
+
     private void ProcessEnemyPacket(LanPacket packet)
     {
         if (!remoteEnemies.TryGetValue(packet.id, out RemoteEnemyVisual visual))
@@ -810,6 +1111,17 @@ public class RanchLanMultiplayer : MonoBehaviour
             );
         }
 
+        if (core.Bottles != null)
+        {
+            core.Bottles.RestoreState(
+                packet.unlockedBottleTier,
+                packet.selectedBottleTier
+            );
+        }
+
+        if (core.Upgrades != null)
+            core.Upgrades.RestoreState(packet.toolTier);
+
         if (core.Areas != null)
         {
             core.Areas.RestoreState(new[]
@@ -820,6 +1132,97 @@ public class RanchLanMultiplayer : MonoBehaviour
                 packet.area3
             });
         }
+    }
+
+    private RanchInteractable FindNearestInteractable(Vector3 origin)
+    {
+        Collider[] colliders = Physics.OverlapSphere(origin, 4.5f);
+        RanchInteractable nearest = null;
+        float nearestDistance = float.MaxValue;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            RanchInteractable interactable =
+                colliders[i].GetComponentInParent<RanchInteractable>();
+
+            if (interactable == null)
+                continue;
+
+            float distance = Vector3.Distance(
+                origin,
+                interactable.transform.position
+            );
+
+            if (distance < nearestDistance)
+            {
+                nearest = interactable;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
+    }
+
+    private RanchStation FindNearestStation(
+        Vector3 origin,
+        RanchStationType stationType)
+    {
+        Collider[] colliders = Physics.OverlapSphere(origin, 5.25f);
+        RanchStation nearest = null;
+        float nearestDistance = float.MaxValue;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            RanchStation station =
+                colliders[i].GetComponentInParent<RanchStation>();
+
+            if (station == null || station.StationType != stationType)
+                continue;
+
+            float distance = Vector3.Distance(
+                origin,
+                station.transform.position
+            );
+
+            if (distance < nearestDistance)
+            {
+                nearest = station;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
+    }
+
+    private RanchAreaGate FindNearestAreaGate(
+        Vector3 origin,
+        int areaIndex)
+    {
+        Collider[] colliders = Physics.OverlapSphere(origin, 7f);
+        RanchAreaGate nearest = null;
+        float nearestDistance = float.MaxValue;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            RanchAreaGate gate =
+                colliders[i].GetComponentInParent<RanchAreaGate>();
+
+            if (gate == null || gate.AreaIndex != areaIndex)
+                continue;
+
+            float distance = Vector3.Distance(
+                origin,
+                gate.transform.position
+            );
+
+            if (distance < nearestDistance)
+            {
+                nearest = gate;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
     }
 
     private void EnsureRemotePlayerVisual()
@@ -883,11 +1286,83 @@ public class RanchLanMultiplayer : MonoBehaviour
         label.color = Color.white;
         labelObject.AddComponent<RanchBillboard>();
 
+        CreateRemoteAttackArc();
+
         if (hasRemotePlayerState)
         {
             remotePlayer.transform.position = remotePlayerTargetPosition;
             remotePlayer.transform.rotation = remotePlayerTargetRotation;
         }
+    }
+
+    private void CreateRemoteAttackArc()
+    {
+        if (remotePlayer == null || remoteAttackArc != null)
+            return;
+
+        remoteAttackArc = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        remoteAttackArc.name = "Remote Attack Swing";
+        remoteAttackArc.transform.SetParent(remotePlayer.transform, false);
+        remoteAttackArc.transform.localPosition =
+            new Vector3(0.45f, 1.25f, 0.95f);
+        remoteAttackArc.transform.localRotation =
+            Quaternion.Euler(0f, -45f, 22f);
+        remoteAttackArc.transform.localScale =
+            new Vector3(0.12f, 0.12f, 1.35f);
+
+        Collider collider = remoteAttackArc.GetComponent<Collider>();
+        if (collider != null)
+            Destroy(collider);
+
+        Renderer renderer = remoteAttackArc.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.sharedMaterial =
+                RanchWorldBuilder.CreateRuntimeMaterial(
+                    new Color(1f, 0.82f, 0.22f)
+                );
+        }
+
+        remoteAttackArc.SetActive(false);
+    }
+
+    private void PlayRemoteAttackAnimation(bool heavy)
+    {
+        EnsureRemotePlayerVisual();
+        CreateRemoteAttackArc();
+
+        remoteAttackHeavy = heavy;
+        remoteAttackDuration = heavy ? 0.42f : 0.26f;
+        remoteAttackTimer = remoteAttackDuration;
+
+        if (remoteAttackArc != null)
+            remoteAttackArc.SetActive(true);
+    }
+
+    private void UpdateRemoteAttackAnimation()
+    {
+        if (remoteAttackArc == null || remoteAttackTimer <= 0f)
+            return;
+
+        remoteAttackTimer -= Time.unscaledDeltaTime;
+        float duration = Mathf.Max(0.01f, remoteAttackDuration);
+        float progress = 1f - Mathf.Clamp01(remoteAttackTimer / duration);
+        float angle = Mathf.Lerp(-75f, 85f, progress);
+        float reach = remoteAttackHeavy ? 1.75f : 1.35f;
+
+        remoteAttackArc.transform.localPosition =
+            new Vector3(0.45f, 1.25f, 0.95f);
+        remoteAttackArc.transform.localRotation =
+            Quaternion.Euler(0f, angle, remoteAttackHeavy ? 35f : 22f);
+        remoteAttackArc.transform.localScale =
+            new Vector3(
+                remoteAttackHeavy ? 0.18f : 0.12f,
+                remoteAttackHeavy ? 0.18f : 0.12f,
+                reach
+            );
+
+        if (remoteAttackTimer <= 0f)
+            remoteAttackArc.SetActive(false);
     }
 
     private static void StripRemoteModelComponents(GameObject model)
@@ -1294,11 +1769,16 @@ public class RanchLanMultiplayer : MonoBehaviour
         guestExtractsSent = 0;
         guestExtractsReceived = 0;
         guestExtractsAccepted = 0;
+        guestInteractionsSent = 0;
+        guestInteractionsReceived = 0;
+        guestInteractionsAccepted = 0;
         lastNetworkEvent = "No multiplayer traffic yet";
 
         if (remotePlayer != null)
             Destroy(remotePlayer);
         remotePlayer = null;
+        remoteAttackArc = null;
+        remoteAttackTimer = 0f;
         hasRemotePlayerState = false;
 
         foreach (RemoteEnemyVisual visual in remoteEnemies.Values)
@@ -1333,7 +1813,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         GUI.depth = -900;
 
         float width = 390f;
-        float height = RanchGameModeState.IsLanClient ? 230f : 205f;
+        float height = RanchGameModeState.IsLanClient ? 265f : 245f;
         Rect panel = new Rect(
             Screen.width - width - 18f,
             18f,
@@ -1365,6 +1845,8 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "  Hits: " + guestAttackHits + "\n" +
                 "Guest extracts: " + guestExtractsReceived +
                 "  Accepted: " + guestExtractsAccepted + "\n" +
+                "Guest stations: " + guestInteractionsReceived +
+                "  Accepted: " + guestInteractionsAccepted + "\n" +
                 "Last: " + lastNetworkEvent + "\n" +
                 (transportMode == TransportMode.DirectOnline
                     ? "Forward TCP " + DefaultPort + " to this computer."
@@ -1385,8 +1867,9 @@ public class RanchLanMultiplayer : MonoBehaviour
                 "  Packets in/out: " + packetsReceived + "/" + packetsSent + "\n" +
                 "Moves sent: " + playerPacketsSent +
                 "  Attacks sent: " + guestAttacksSent + "\n" +
-                "Extracts sent: " + guestExtractsSent + "\n" +
-                "Guest: Hold E at tree. Attack: Click/Space, Q";
+                "Extracts sent: " + guestExtractsSent +
+                "  Station uses: " + guestInteractionsSent + "\n" +
+                "Guest: Hold E at tree. Press E at stations.";
         }
 
         GUI.Label(
