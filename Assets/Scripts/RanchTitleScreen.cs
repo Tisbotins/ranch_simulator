@@ -1,8 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Runtime-generated title screen with separate Single Player and LAN
-/// Multiplayer modes. RanchGameBootstrap adds it automatically.
+/// Runtime-generated title screen with Single Player, LAN, and direct-online
+/// multiplayer modes. RanchGameBootstrap adds it automatically.
 /// </summary>
 [DefaultExecutionOrder(9000)]
 [DisallowMultipleComponent]
@@ -25,6 +25,7 @@ public class RanchTitleScreen : MonoBehaviour
     private bool startingGame;
     private MenuPage page;
     private string joinAddress = "127.0.0.1";
+    private string onlineJoinAddress = "public-ip-or-dns:7777";
     private string menuStatus = "";
 
     private Texture2D backgroundTexture;
@@ -143,12 +144,24 @@ public class RanchTitleScreen : MonoBehaviour
 
     private void BeginLanHost()
     {
+        BeginMultiplayerHost(false);
+    }
+
+    private void BeginOnlineHost()
+    {
+        BeginMultiplayerHost(true);
+    }
+
+    private void BeginMultiplayerHost(bool onlineDirect)
+    {
         if (!CanStart())
             return;
 
-        if (multiplayer == null || !multiplayer.StartHost())
+        if (multiplayer == null || !multiplayer.StartHost(onlineDirect))
         {
-            menuStatus = "Could not start the LAN host.";
+            menuStatus = onlineDirect
+                ? "Could not start the online host."
+                : "Could not start the LAN host.";
             return;
         }
 
@@ -157,26 +170,42 @@ public class RanchTitleScreen : MonoBehaviour
 
         EnterGame(
             (loaded ? "Host save loaded. " : "New host ranch started. ") +
-            "Give your friend the LAN address shown in the top-right corner."
+            (onlineDirect
+                ? "Forward TCP port 7777, then give your friend your public IP."
+                : "Give your friend the LAN address shown in the top-right corner.")
         );
     }
 
     private void BeginLanClient()
     {
+        BeginMultiplayerClient(false);
+    }
+
+    private void BeginOnlineClient()
+    {
+        BeginMultiplayerClient(true);
+    }
+
+    private void BeginMultiplayerClient(bool onlineDirect)
+    {
         if (!CanStart())
             return;
 
-        if (multiplayer == null || !multiplayer.StartClient(joinAddress))
+        string address = onlineDirect ? onlineJoinAddress : joinAddress;
+        if (multiplayer == null ||
+            !multiplayer.StartClient(address, onlineDirect))
         {
             menuStatus = multiplayer != null
                 ? multiplayer.StatusText
-                : "LAN multiplayer system is missing.";
+                : "Multiplayer system is missing.";
             return;
         }
 
         startingGame = true;
         EnterGame(
-            "Connecting as a LAN guest. The host controls the ranch and save file."
+            onlineDirect
+                ? "Connecting as a direct-online guest. The host controls the ranch and save file."
+                : "Connecting as a LAN guest. The host controls the ranch and save file."
         );
     }
 
@@ -281,7 +310,7 @@ public class RanchTitleScreen : MonoBehaviour
 
         if (GUI.Button(
             new Rect(570f, 485f, 460f, 82f),
-            "MULTIPLAYER — LAN",
+            "MULTIPLAYER",
             secondaryButtonStyle))
         {
             page = MenuPage.Multiplayer;
@@ -291,8 +320,8 @@ public class RanchTitleScreen : MonoBehaviour
 
         string saveText =
             core.Save != null && core.Save.HasSaveFile
-                ? "Single Player or Host LAN can continue your saved ranch."
-                : "Single Player or Host LAN will begin a new ranch.";
+                ? "Single Player or Host can continue your saved ranch."
+                : "Single Player or Host will begin a new ranch.";
 
         GUI.Label(
             new Rect(535f, 625f, 530f, 45f),
@@ -309,21 +338,30 @@ public class RanchTitleScreen : MonoBehaviour
 
     private void DrawMultiplayerMenu()
     {
-        Rect card = new Rect(390f, 270f, 820f, 500f);
+        Rect card = new Rect(330f, 250f, 940f, 535f);
         GUI.Box(card, GUIContent.none, cardStyle);
 
         GUI.Label(
-            new Rect(485f, 300f, 630f, 44f),
-            "TWO-PLAYER LAN EXPERIMENT",
+            new Rect(405f, 280f, 790f, 44f),
+            "TWO-PLAYER DIRECT MULTIPLAYER",
             subtitleStyle
         );
 
         if (GUI.Button(
-            new Rect(520f, 370f, 560f, 72f),
+            new Rect(405f, 350f, 360f, 68f),
             "HOST LAN RANCH",
             primaryButtonStyle))
         {
             BeginLanHost();
+            GUIUtility.ExitGUI();
+        }
+
+        if (GUI.Button(
+            new Rect(835f, 350f, 360f, 68f),
+            "HOST ONLINE RANCH",
+            primaryButtonStyle))
+        {
+            BeginOnlineHost();
             GUIUtility.ExitGUI();
         }
 
@@ -332,26 +370,32 @@ public class RanchTitleScreen : MonoBehaviour
             : "Unavailable";
 
         GUI.Label(
-            new Rect(520f, 448f, 560f, 34f),
-            "Your host address: " + hostAddress,
+            new Rect(405f, 425f, 360f, 48f),
+            "LAN host address: " + hostAddress,
             statusStyle
         );
 
         GUI.Label(
-            new Rect(520f, 505f, 200f, 35f),
-            "HOST IPv4 ADDRESS",
+            new Rect(835f, 425f, 360f, 48f),
+            "Online host: forward TCP 7777 and share your public IP.",
+            statusStyle
+        );
+
+        GUI.Label(
+            new Rect(405f, 495f, 170f, 35f),
+            "LAN HOST IPv4",
             fieldLabelStyle
         );
 
         joinAddress = GUI.TextField(
-            new Rect(720f, 498f, 360f, 46f),
+            new Rect(575f, 488f, 190f, 46f),
             joinAddress,
             45,
             fieldStyle
         );
 
         if (GUI.Button(
-            new Rect(520f, 565f, 560f, 72f),
+            new Rect(405f, 550f, 360f, 68f),
             "JOIN LAN RANCH",
             primaryButtonStyle))
         {
@@ -359,8 +403,30 @@ public class RanchTitleScreen : MonoBehaviour
             GUIUtility.ExitGUI();
         }
 
+        GUI.Label(
+            new Rect(835f, 495f, 185f, 35f),
+            "PUBLIC HOST",
+            fieldLabelStyle
+        );
+
+        onlineJoinAddress = GUI.TextField(
+            new Rect(1020f, 488f, 175f, 46f),
+            onlineJoinAddress,
+            64,
+            fieldStyle
+        );
+
         if (GUI.Button(
-            new Rect(520f, 660f, 270f, 58f),
+            new Rect(835f, 550f, 360f, 68f),
+            "JOIN ONLINE RANCH",
+            primaryButtonStyle))
+        {
+            BeginOnlineClient();
+            GUIUtility.ExitGUI();
+        }
+
+        if (GUI.Button(
+            new Rect(405f, 665f, 260f, 58f),
             "BACK",
             secondaryButtonStyle))
         {
@@ -370,9 +436,9 @@ public class RanchTitleScreen : MonoBehaviour
         }
 
         GUI.Label(
-            new Rect(800f, 655f, 280f, 68f),
+            new Rect(690f, 650f, 505f, 86f),
             string.IsNullOrEmpty(menuStatus)
-                ? "Both laptops must be on the same LAN."
+                ? "Online mode is direct peer-to-peer: no dedicated server, but the host must be reachable from the internet."
                 : menuStatus,
             statusStyle
         );

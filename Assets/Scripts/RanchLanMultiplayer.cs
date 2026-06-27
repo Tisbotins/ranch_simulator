@@ -9,14 +9,15 @@ using System.Threading;
 using UnityEngine;
 
 /// <summary>
-/// A dependency-free two-player LAN experiment.
+/// A dependency-free two-player LAN / direct-online experiment.
 ///
 /// The host remains authoritative for the ranch, waves, enemies, rewards,
 /// and save file. The guest can move around, see the host and host enemies,
 /// and make basic networked melee attacks against those enemies.
 ///
 /// This is intentionally a learning prototype rather than production
-/// matchmaking/netcode. It uses one TCP connection on the local network.
+/// matchmaking/netcode. It uses one TCP connection. Direct-online play needs
+/// the host's router/firewall to forward the game port to the host machine.
 /// </summary>
 [DefaultExecutionOrder(-850)]
 [DisallowMultipleComponent]
@@ -27,6 +28,11 @@ public class RanchLanMultiplayer : MonoBehaviour
     public bool IsConnected => connected;
     public string StatusText => statusText;
     public string LocalAddress => localAddress;
+    public string SessionLabel => onlineDirectMode ? "ONLINE DIRECT" : "LAN";
+    public string HostAddressHelp =>
+        onlineDirectMode
+            ? "Share your public IP or DNS name with port " + DefaultPort + "."
+            : "Share this local address with another device on your LAN.";
     public int Port => DefaultPort;
 
     private const float PlayerSendInterval = 0.05f;
@@ -102,6 +108,7 @@ public class RanchLanMultiplayer : MonoBehaviour
     private volatile bool connected;
     private volatile string statusText = "LAN multiplayer inactive";
     private string localAddress = "Unknown";
+    private bool onlineDirectMode;
 
     private GameObject remotePlayer;
     private Vector3 remotePlayerTargetPosition;
@@ -137,17 +144,28 @@ public class RanchLanMultiplayer : MonoBehaviour
 
     public bool StartHost()
     {
+        return StartHost(false);
+    }
+
+    public bool StartHost(bool onlineDirect)
+    {
         if (core == null)
             return false;
 
         ShutdownConnection(false);
         RanchGameModeState.SetMode(RanchGameMode.LanHost);
+        onlineDirectMode = onlineDirect;
 
         stopRequested = false;
         connected = false;
         statusText =
-            "Hosting on " + localAddress + ":" + DefaultPort +
-            " — waiting for one guest";
+            (onlineDirectMode
+                ? "Direct-online host listening on port "
+                : "Hosting on " + localAddress + ":") +
+            DefaultPort +
+            (onlineDirectMode
+                ? " — forward this port to this computer"
+                : " — waiting for one guest");
 
         listenerThread = new Thread(HostAcceptLoop)
         {
@@ -160,6 +178,11 @@ public class RanchLanMultiplayer : MonoBehaviour
 
     public bool StartClient(string hostAddress)
     {
+        return StartClient(hostAddress, false);
+    }
+
+    public bool StartClient(string hostAddress, bool onlineDirect)
+    {
         if (core == null)
             return false;
 
@@ -169,17 +192,26 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         if (cleaned.Length == 0)
         {
-            statusText = "Enter the host laptop's IPv4 address.";
+            statusText = onlineDirect
+                ? "Enter the host's public IP, DNS name, or invite address."
+                : "Enter the host laptop's IPv4 address.";
+            return false;
+        }
+
+        if (!TryParseEndpoint(cleaned, out string address, out int port))
+        {
+            statusText = "Enter an address like 192.168.1.5 or play.example.com:7777.";
             return false;
         }
 
         ShutdownConnection(false);
         RanchGameModeState.SetMode(RanchGameMode.LanClient);
+        onlineDirectMode = onlineDirect;
 
         stopRequested = false;
         connected = false;
         statusText =
-            "Connecting to " + cleaned + ":" + DefaultPort + "...";
+            "Connecting to " + address + ":" + port + "...";
 
         if (core.Player != null)
         {
@@ -193,11 +225,11 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
 
         Thread connectThread = new Thread(
-            () => ClientConnectLoop(cleaned)
+            () => ClientConnectLoop(address, port)
         )
         {
             IsBackground = true,
-            Name = "Ranch LAN Client Connector"
+            Name = "Ranch " + SessionLabel + " Client Connector"
         };
         connectThread.Start();
         return true;
@@ -565,8 +597,8 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         remotePlayer = new GameObject(
             RanchGameModeState.IsLanHost
-                ? "LAN Guest Player"
-                : "LAN Host Player"
+                ? SessionLabel + " Guest Player"
+                : SessionLabel + " Host Player"
         );
 
         GameObject prefab =
@@ -610,8 +642,8 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         TextMesh label = labelObject.AddComponent<TextMesh>();
         label.text = RanchGameModeState.IsLanHost
-            ? "LAN GUEST"
-            : "LAN HOST";
+            ? SessionLabel + " GUEST"
+            : SessionLabel + " HOST";
         label.fontSize = 52;
         label.characterSize = 0.075f;
         label.anchor = TextAnchor.MiddleCenter;
@@ -682,7 +714,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
 
         GameObject root = new GameObject(
-            "LAN Enemy " + packet.id + " — " + packet.name
+            SessionLabel + " Enemy " + packet.id + " - " + packet.name
         );
 
         GameObject body = GameObject.CreatePrimitive(primitive);
@@ -818,7 +850,7 @@ public class RanchLanMultiplayer : MonoBehaviour
 
             listener.Stop();
             ConfigureConnection(accepted);
-            statusText = "LAN guest connected";
+            statusText = SessionLabel + " guest connected";
         }
         catch (Exception exception)
         {
@@ -827,13 +859,13 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
     }
 
-    private void ClientConnectLoop(string hostAddress)
+    private void ClientConnectLoop(string hostAddress, int port)
     {
         try
         {
             TcpClient connectingClient = new TcpClient();
             connectingClient.NoDelay = true;
-            connectingClient.Connect(hostAddress, DefaultPort);
+            connectingClient.Connect(hostAddress, port);
 
             if (stopRequested)
             {
@@ -842,7 +874,9 @@ public class RanchLanMultiplayer : MonoBehaviour
             }
 
             ConfigureConnection(connectingClient);
-            statusText = "Connected to LAN host " + hostAddress;
+            statusText =
+                "Connected to " + SessionLabel + " host " +
+                hostAddress + ":" + port;
         }
         catch (Exception exception)
         {
@@ -882,13 +916,13 @@ public class RanchLanMultiplayer : MonoBehaviour
         receiveThread = new Thread(ReceiveLoop)
         {
             IsBackground = true,
-            Name = "Ranch LAN Receiver"
+            Name = "Ranch " + SessionLabel + " Receiver"
         };
 
         sendThread = new Thread(SendLoop)
         {
             IsBackground = true,
-            Name = "Ranch LAN Sender"
+            Name = "Ranch " + SessionLabel + " Sender"
         };
 
         receiveThread.Start();
@@ -948,7 +982,8 @@ public class RanchLanMultiplayer : MonoBehaviour
         connected = false;
 
         if (!stopRequested)
-            statusText = "LAN player disconnected. Press F10 for title screen.";
+            statusText =
+                SessionLabel + " player disconnected. Press F10 for title screen.";
     }
 
     public void ReturnToTitleScreen()
@@ -991,7 +1026,7 @@ public class RanchLanMultiplayer : MonoBehaviour
         remoteEnemies.Clear();
 
         if (updateStatus)
-            statusText = "LAN multiplayer stopped";
+            statusText = SessionLabel + " multiplayer stopped";
     }
 
     private void OnDestroy()
@@ -1026,8 +1061,8 @@ public class RanchLanMultiplayer : MonoBehaviour
         GUI.Box(panel, GUIContent.none, panelStyle);
 
         string heading = RanchGameModeState.IsLanHost
-            ? "LAN HOST"
-            : "LAN GUEST";
+            ? SessionLabel + " HOST"
+            : SessionLabel + " GUEST";
 
         GUI.Label(
             new Rect(panel.x + 16f, panel.y + 10f, width - 32f, 28f),
@@ -1041,7 +1076,9 @@ public class RanchLanMultiplayer : MonoBehaviour
             body =
                 statusText + "\n" +
                 "Address: " + localAddress + ":" + DefaultPort + "\n" +
-                "Host owns the ranch and save file.";
+                (onlineDirectMode
+                    ? "Forward TCP " + DefaultPort + " to this computer."
+                    : "Host owns the ranch and save file.");
         }
         else
         {
@@ -1135,5 +1172,41 @@ public class RanchLanMultiplayer : MonoBehaviour
         }
 
         return "127.0.0.1";
+    }
+
+    private static bool TryParseEndpoint(
+        string value,
+        out string address,
+        out int port)
+    {
+        address = "";
+        port = DefaultPort;
+
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string cleaned = value.Trim();
+
+        if (cleaned.StartsWith("tcp://", StringComparison.OrdinalIgnoreCase))
+            cleaned = cleaned.Substring(6);
+
+        int separator = cleaned.LastIndexOf(':');
+        if (separator > 0 &&
+            separator < cleaned.Length - 1 &&
+            cleaned.IndexOf(':') == separator)
+        {
+            string portText = cleaned.Substring(separator + 1);
+            if (!int.TryParse(portText, out port) ||
+                port <= 0 ||
+                port > 65535)
+            {
+                return false;
+            }
+
+            cleaned = cleaned.Substring(0, separator);
+        }
+
+        address = cleaned.Trim();
+        return address.Length > 0;
     }
 }
