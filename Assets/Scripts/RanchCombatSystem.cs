@@ -47,6 +47,12 @@ public class RanchCombatSystem : MonoBehaviour
         else
             comboStep = 0;
 
+        if (RanchGameModeState.IsLanClient)
+        {
+            IsBlocking = false;
+            return;
+        }
+
         if (core == null || player == null || core.GameWon || core.Health.IsDead ||
             core.Shop.IsOpen || core.Progression.IsOpen || core.Settings.IsOpen ||
             (core.Classes != null && core.Classes.IsOpen) ||

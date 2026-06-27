@@ -400,7 +400,6 @@ public class RanchLanMultiplayer : MonoBehaviour
         SetEnabled(core.Progression, false);
         SetEnabled(core.Classes, false);
         SetEnabled(core.Laboratory, false);
-        SetEnabled(core.Combat, false);
         SetEnabled(core.Deployables, false);
         SetEnabled(core.Tree, false);
         SetEnabled(core.Bottles, false);
@@ -532,6 +531,11 @@ public class RanchLanMultiplayer : MonoBehaviour
 
         nextGuestAttack = now + (heavy ? 1.1f : 0.55f);
         Transform player = core.Player.transform;
+
+        core.Player.PlayAttackAnimation(
+            heavy,
+            heavy ? 3 : 1
+        );
 
         QueuePacket(new LanPacket
         {
