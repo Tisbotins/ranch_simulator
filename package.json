@@ -1,0 +1,13 @@
+{
+  "name": "ranch-simulator-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TCP relay for Ranch Simulator multiplayer.",
+  "main": "Tools/ranch_relay_server.js",
+  "scripts": {
+    "start": "node Tools/ranch_relay_server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
