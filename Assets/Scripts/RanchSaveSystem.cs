@@ -5,7 +5,7 @@ using UnityEngine;
 [Serializable]
 public class RanchSaveData
 {
-    public int saveVersion = 7;
+    public int saveVersion = 8;
     public float rawRanch;
     public float totalRanchCollected;
     public float money;
@@ -59,6 +59,12 @@ public class RanchSaveData
     public int bowWeaponLevel;
     public int summonerWeaponLevel;
     public int[] weaponModificationLevels = new int[4];
+
+    // Cosmic Journey (post-CJ endgame) progress.
+    public bool spaceJourneyUnlocked;
+    public int spacePlanetIndex;
+    public float spaceFuel;
+    public bool cosmicCJDefeated;
 }
 
 public class RanchSaveSystem : MonoBehaviour
@@ -489,6 +495,14 @@ public class RanchSaveSystem : MonoBehaviour
         data.playerZ = position.z;
         data.playerRotationY = core.Player.transform.eulerAngles.y;
 
+        if (core.Space != null)
+        {
+            data.spaceJourneyUnlocked = core.Space.JourneyUnlocked;
+            data.spacePlanetIndex = core.Space.PlanetIndex;
+            data.spaceFuel = core.Space.Fuel;
+            data.cosmicCJDefeated = core.Space.CosmicCJDefeated;
+        }
+
         return data;
     }
 
@@ -635,6 +649,16 @@ public class RanchSaveSystem : MonoBehaviour
             new Vector3(data.playerX, data.playerY, data.playerZ),
             data.playerRotationY
         );
+
+        if (core.Space != null && data.saveVersion >= 8)
+        {
+            core.Space.RestoreState(
+                data.spaceJourneyUnlocked,
+                data.spacePlanetIndex,
+                data.spaceFuel,
+                data.cosmicCJDefeated
+            );
+        }
 
         core.NotifyResourcesChanged();
     }

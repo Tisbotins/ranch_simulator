@@ -285,10 +285,18 @@ public class RanchCJSystem : MonoBehaviour
         bossObject.name = "CJ, the Ultimate Ranchenator";
         bossObject.transform.position = bossSpawn.position;
         bossObject.transform.rotation = bossSpawn.rotation;
-        bossObject.GetComponent<Renderer>().material =
-            RanchWorldBuilder.CreateRuntimeMaterial(new Color(0.92f, 0.66f, 0.08f));
 
-        CreateBossCrown(bossObject.transform);
+        // Use the custom CJ character model if one has been added, exactly like
+        // the Player (PlayerModel.prefab) and Drew (DrewModel.prefab). The capsule
+        // stays as the invisible gameplay body (collider + RanchEnemy); only its
+        // mesh is hidden when a real model is present. With no prefab, CJ falls
+        // back to the primitive look below.
+        if (!TryLoadCJModel(bossObject))
+        {
+            bossObject.GetComponent<Renderer>().material =
+                RanchWorldBuilder.CreateRuntimeMaterial(new Color(0.92f, 0.66f, 0.08f));
+            CreateBossCrown(bossObject.transform);
+        }
 
         RanchEnemy boss = bossObject.AddComponent<RanchEnemy>();
         boss.Initialize(core, core.Waves, core.Player.transform, 4, 9999, RequiredWaves);
@@ -298,6 +306,51 @@ public class RanchCJSystem : MonoBehaviour
         CurrentPhase = 1;
         core.Waves.RegisterFinalBattleEnemy(boss);
         RefreshGateLabel();
+    }
+
+    // Loads Assets/Resources/Prefabs/CJModel.prefab onto the boss body if it
+    // exists. Returns true when a custom model was attached. Mirrors the Drew
+    // loader in RanchWorldBuilder: imported cameras/lights/listeners/colliders
+    // are stripped so they cannot hijack the game camera, lighting, or hitboxes.
+    private bool TryLoadCJModel(GameObject bossObject)
+    {
+        GameObject prefab = Resources.Load<GameObject>("Prefabs/CJModel");
+        if (prefab == null)
+        {
+            Debug.LogWarning(
+                "CJModel.prefab was not found. Expected path: " +
+                "Assets/Resources/Prefabs/CJModel.prefab. " +
+                "Using the primitive CJ until a model is added."
+            );
+            return false;
+        }
+
+        GameObject model = Instantiate(prefab);
+        model.name = "CJ Character Model";
+        model.transform.SetParent(bossObject.transform, false);
+        model.transform.localPosition = Vector3.zero;
+        model.transform.localRotation = Quaternion.identity;
+
+        foreach (Camera importedCamera in model.GetComponentsInChildren<Camera>(true))
+            Destroy(importedCamera);
+        foreach (AudioListener importedListener in model.GetComponentsInChildren<AudioListener>(true))
+            Destroy(importedListener);
+        foreach (Light importedLight in model.GetComponentsInChildren<Light>(true))
+            Destroy(importedLight);
+        foreach (Collider importedCollider in model.GetComponentsInChildren<Collider>(true))
+            Destroy(importedCollider);
+        foreach (Transform importedObject in model.GetComponentsInChildren<Transform>(true))
+            importedObject.gameObject.tag = "Untagged";
+
+        MeshRenderer capsuleRenderer = bossObject.GetComponent<MeshRenderer>();
+        if (capsuleRenderer != null)
+            Destroy(capsuleRenderer);
+        MeshFilter capsuleFilter = bossObject.GetComponent<MeshFilter>();
+        if (capsuleFilter != null)
+            Destroy(capsuleFilter);
+
+        Debug.Log("CJ custom model loaded from Resources/Prefabs/CJModel.");
+        return true;
     }
 
     private void CreateBossCrown(Transform parent)

@@ -38,6 +38,7 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchCJSystem cj = GetOrAdd<RanchCJSystem>();
         RanchSaveSystem save = GetOrAdd<RanchSaveSystem>();
         RanchSettingsSystem settings = GetOrAdd<RanchSettingsSystem>();
+        RanchSpaceSystem space = GetOrAdd<RanchSpaceSystem>();
         RanchWorldBuilder world = GetOrAdd<RanchWorldBuilder>();
         RanchUI ui = GetOrAdd<RanchUI>();
         RanchLanMultiplayer multiplayer = GetOrAdd<RanchLanMultiplayer>();
@@ -63,7 +64,8 @@ public class RanchGameBootstrap : MonoBehaviour
             shop,
             cj,
             save,
-            settings
+            settings,
+            space
         );
 
         inventory.Initialize(core);
@@ -86,6 +88,7 @@ public class RanchGameBootstrap : MonoBehaviour
         cj.Initialize(core);
         save.Initialize(core);
         settings.Initialize(core);
+        space.Initialize(core);
         ui.Initialize(core);
         multiplayer.Initialize(core);
         titleScreen.Initialize(core, multiplayer);

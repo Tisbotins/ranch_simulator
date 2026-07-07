@@ -26,6 +26,7 @@ public class RanchGameCore : MonoBehaviour
     public RanchCJSystem CJ { get; private set; }
     public RanchSaveSystem Save { get; private set; }
     public RanchSettingsSystem Settings { get; private set; }
+    public RanchSpaceSystem Space { get; private set; }
 
     public RanchPlayerController Player { get; private set; }
     public Transform RanchTreeTransform { get; private set; }
@@ -70,7 +71,8 @@ public class RanchGameCore : MonoBehaviour
         RanchShopSystem shop,
         RanchCJSystem cj,
         RanchSaveSystem save,
-        RanchSettingsSystem settings)
+        RanchSettingsSystem settings,
+        RanchSpaceSystem space)
     {
         Inventory = inventory;
         Bottles = bottles;
@@ -92,6 +94,7 @@ public class RanchGameCore : MonoBehaviour
         CJ = cj;
         Save = save;
         Settings = settings;
+        Space = space;
     }
 
     public void RegisterWorld(RanchPlayerController player, Transform ranchTree)
@@ -152,9 +155,24 @@ public class RanchGameCore : MonoBehaviour
         if (GameWon)
             return;
 
+        // Defeating CJ is no longer the end — it opens the Cosmic Journey. Only
+        // once that journey is finished (Cosmic CJ defeated) does the game end.
+        if (Space != null && !Space.JourneyCompleted)
+        {
+            Progression.AddExperience(1000f, "Defeated CJ");
+            ShowMessage("CJ falls — but a cosmic rift tears open above the ranch...", 8f);
+            GameWonEvent?.Invoke();
+            Space.BeginJourney();
+            Save.SaveGame(false);
+            return;
+        }
+
         GameWon = true;
-        Progression.AddExperience(1000f, "Defeated CJ");
-        ShowMessage("You defeated CJ, the Ultimate Ranchenator.", 999f);
+        Progression.AddExperience(1500f, "Defeated Cosmic CJ");
+        ShowMessage(
+            "You defeated Cosmic CJ and freed every ranch in the galaxy. Press R for a new game.",
+            999f
+        );
         GameWonEvent?.Invoke();
 
         if (Player != null)

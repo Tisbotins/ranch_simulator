@@ -8,6 +8,7 @@ An interactive ranch harvesting and combat game built with Unity.
 - Single-player ranch progression
 - Harvesting, bottling, selling, shops, upgrades, and save/load support
 - Combat, waves, enemies, bosses, equipment, traps, and class progression
+- **The Cosmic Journey** — a post-CJ space endgame across planets with new Ranch types
 - Two-player co-op multiplayer where each player has full access to the game
 
 ## Unity Version
@@ -60,12 +61,25 @@ Both players run the **full** game. The guest is no longer a stripped-down helpe
 
 Because progression is per-player, each machine simulates its own world (tree growth, empire buildings, area access, passive income); the players share their avatars, the enemy waves, and the revive flow.
 
+## The Cosmic Journey (endgame)
+
+Defeating CJ, the Ultimate Ranchenator, is no longer the end of the game — it opens the **Cosmic Journey**. A rift tears open, the Ranch Rocket launches, and the main character travels the galaxy, Mario-Odyssey style, discovering a new type of Ranch on every planet:
+
+- **Verdant Moon** — Mint Ranch
+- **Ember Reach** — Ember Ranch
+- **Frost Halo** — Frost Ranch
+- **Nebula Bazaar** — Prism Ranch
+- **The Cosmic Core** — Cosmic Ranch (final planet)
+
+Any Ranch you harvest, bottle, or automate on a planet is refined into **rocket fuel**. Fill the tank, then open the Ranch Rocket console (press **`J`**) and **launch** to the next world. Each planet re-themes the sky and the Ranch Tree and advances the crew story — including Drew's pull toward the Core. On **The Cosmic Core**, confront **Cosmic CJ**, who controls all the Ranch in the galaxy; defeating him is the true ending. Journey progress is saved.
+
 ## Controls
 
 - `Enter`: start single player from the title screen
 - `F10`: disconnect multiplayer and return to the title screen
 - `Z`: save
 - `X`: load
+- `J`: open the Ranch Rocket console (after the Cosmic Journey unlocks)
 - `Hold E` near a downed teammate: revive them (multiplayer)
 - `Left Click` or `Space`: guest attack against shared enemies in multiplayer
 - `Q`: guest heavy attack in multiplayer
