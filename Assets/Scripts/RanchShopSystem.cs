@@ -1154,17 +1154,40 @@ public class RanchShopSystem : MonoBehaviour
         if (stylesReady)
             return;
 
-        screenTexture = MakeTexture(new Color(0.015f, 0.025f, 0.035f, 0.99f));
-        cardTexture = MakeTexture(new Color(0.07f, 0.11f, 0.15f, 0.99f));
-        selectedTexture = MakeTexture(new Color(0.10f, 0.55f, 0.48f, 1f));
-        buttonTexture = MakeTexture(new Color(0.12f, 0.35f, 0.45f, 1f));
-        hoverTexture = MakeTexture(new Color(0.16f, 0.52f, 0.60f, 1f));
+        const int radius = 14;
+        RectOffset border = RanchVisuals.PanelBorder(radius);
+
+        screenTexture = RanchVisuals.CreatePanelTexture(
+            new Color(0.055f, 0.075f, 0.105f, 0.995f),
+            new Color(0.015f, 0.025f, 0.040f, 0.995f),
+            new Color(0.22f, 0.30f, 0.38f, 0.9f), radius);
+
+        cardTexture = RanchVisuals.CreatePanelTexture(
+            new Color(0.105f, 0.145f, 0.190f, 0.99f),
+            new Color(0.050f, 0.075f, 0.105f, 0.99f),
+            new Color(0.26f, 0.36f, 0.45f, 0.85f), radius);
+
+        selectedTexture = RanchVisuals.CreatePanelTexture(
+            RanchVisuals.AccentTop, RanchVisuals.AccentBottom,
+            RanchVisuals.AccentBorder, radius);
+
+        buttonTexture = RanchVisuals.CreatePanelTexture(
+            new Color(0.14f, 0.40f, 0.50f, 1f),
+            new Color(0.07f, 0.24f, 0.32f, 1f),
+            new Color(0.34f, 0.70f, 0.80f, 0.9f), radius);
+
+        hoverTexture = RanchVisuals.CreatePanelTexture(
+            new Color(0.22f, 0.60f, 0.70f, 1f),
+            new Color(0.12f, 0.38f, 0.48f, 1f),
+            new Color(0.55f, 0.92f, 1f, 1f), radius);
 
         screenStyle = new GUIStyle(GUI.skin.box);
         screenStyle.normal.background = screenTexture;
+        screenStyle.border = border;
 
         cardStyle = new GUIStyle(GUI.skin.box);
         cardStyle.normal.background = cardTexture;
+        cardStyle.border = border;
 
         titleStyle = new GUIStyle(GUI.skin.label)
         {
@@ -1206,6 +1229,9 @@ public class RanchShopSystem : MonoBehaviour
         buttonStyle.normal.background = buttonTexture;
         buttonStyle.hover.background = hoverTexture;
         buttonStyle.active.background = selectedTexture;
+        // Without the 9-slice border the rounded corners would be squashed
+        // when the button is stretched to its rect.
+        buttonStyle.border = border;
         buttonStyle.normal.textColor = Color.white;
         buttonStyle.hover.textColor = Color.white;
         buttonStyle.active.textColor = Color.white;
@@ -1217,6 +1243,7 @@ public class RanchShopSystem : MonoBehaviour
 
         selectedTabStyle = new GUIStyle(tabStyle);
         selectedTabStyle.normal.background = selectedTexture;
+        selectedTabStyle.border = border;
         stylesReady = true;
     }
 

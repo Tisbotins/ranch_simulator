@@ -115,22 +115,32 @@ public class RanchWorldBuilder : MonoBehaviour
         core.CJ.RegisterArena(cjArena, arenaPlayerStart, arenaBossSpawn);
     }
 
+    /// <summary>
+    /// Every primitive in the game goes through here. It now delegates to
+    /// RanchVisuals, which gives each surface a real finish (instead of Unity's
+    /// default flat 0.5 smoothness) and caches materials so the world builder
+    /// stops allocating a Material and running Shader.Find per primitive.
+    /// </summary>
     public static Material CreateRuntimeMaterial(Color color)
     {
-        Shader shader = Shader.Find("Standard");
-        if (shader == null)
-            shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null)
-            shader = Shader.Find("Sprites/Default");
+        return RanchVisuals.GetMaterial(color, RanchVisuals.InferSurface(color));
+    }
 
-        Material material = new Material(shader);
-        material.color = color;
-        return material;
+    /// <summary>Explicit finish, for surfaces where the guess is not good enough.</summary>
+    public static Material CreateRuntimeMaterial(
+        Color color,
+        RanchVisuals.Surface surface)
+    {
+        return RanchVisuals.GetMaterial(color, surface);
     }
 
     private static Material CreateTransparentMaterial(Color color)
     {
-        Material material = CreateRuntimeMaterial(color);
+        // Must be unshared: this mutates blend mode and render queue, and
+        // RanchVisuals.GetMaterial hands back a cached material that other
+        // opaque objects are using.
+        Material material =
+            RanchVisuals.CreateUnique(color, RanchVisuals.Surface.Glossy);
 
         if (material.HasProperty("_Mode"))
         {

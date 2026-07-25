@@ -383,27 +383,53 @@ public class RanchUI : MonoBehaviour
         if (stylesReady)
             return;
 
-        panelTexture = MakeTexture(new Color(0.025f, 0.025f, 0.025f, 0.94f));
-        selectedTexture = MakeTexture(new Color(0.08f, 0.55f, 0.50f, 0.98f));
-        healthLostTexture = MakeTexture(new Color(0.22f, 0.05f, 0.05f, 1f));
-        healthFillTexture = MakeTexture(new Color(0.18f, 0.80f, 0.26f, 1f));
-        staminaFillTexture = MakeTexture(new Color(0.15f, 0.55f, 0.95f, 1f));
-        waitingTexture = MakeTexture(new Color(0.36f, 0.20f, 0.03f, 0.96f));
-        activeTexture = MakeTexture(new Color(0.40f, 0.04f, 0.04f, 0.96f));
-        damageTexture = MakeTexture(new Color(0.75f, 0.02f, 0.02f, 0.18f));
-        bossFillTexture = MakeTexture(new Color(0.95f, 0.65f, 0.05f, 1f));
+        // Rounded, vertically shaded, bordered panels. The 9-slice border keeps
+        // the corner radius intact no matter how the panel is stretched.
+        const int radius = 12;
+        RectOffset border = RanchVisuals.PanelBorder(radius);
+
+        panelTexture = RanchVisuals.CreatePanelTexture(
+            RanchVisuals.PanelTop, RanchVisuals.PanelBottom,
+            RanchVisuals.PanelBorderColor, radius);
+
+        selectedTexture = RanchVisuals.CreatePanelTexture(
+            RanchVisuals.AccentTop, RanchVisuals.AccentBottom,
+            RanchVisuals.AccentBorder, radius);
+
+        waitingTexture = RanchVisuals.CreatePanelTexture(
+            RanchVisuals.WarnTop, RanchVisuals.WarnBottom,
+            RanchVisuals.WarnBorder, radius);
+
+        activeTexture = RanchVisuals.CreatePanelTexture(
+            RanchVisuals.DangerTop, RanchVisuals.DangerBottom,
+            RanchVisuals.DangerBorder, radius);
+
+        // Bars keep a gradient so they read as lit rather than as flat blocks.
+        healthLostTexture = RanchVisuals.CreateSolidTexture(new Color(0.14f, 0.04f, 0.05f, 0.85f));
+        healthFillTexture = RanchVisuals.CreateBarTexture(
+            new Color(0.16f, 0.72f, 0.28f, 1f), new Color(0.42f, 0.95f, 0.40f, 1f));
+        staminaFillTexture = RanchVisuals.CreateBarTexture(
+            new Color(0.12f, 0.46f, 0.90f, 1f), new Color(0.38f, 0.76f, 1f, 1f));
+        bossFillTexture = RanchVisuals.CreateBarTexture(
+            new Color(0.85f, 0.42f, 0.04f, 1f), new Color(1f, 0.78f, 0.22f, 1f));
+        damageTexture = RanchVisuals.CreateSolidTexture(new Color(0.75f, 0.02f, 0.02f, 0.18f));
 
         panelStyle = new GUIStyle(GUI.skin.box);
         panelStyle.normal.background = panelTexture;
+        panelStyle.border = border;
+        panelStyle.padding = new RectOffset(4, 4, 4, 4);
 
         selectedPanelStyle = new GUIStyle(panelStyle);
         selectedPanelStyle.normal.background = selectedTexture;
+        selectedPanelStyle.border = border;
 
         waitingStyle = new GUIStyle(panelStyle);
         waitingStyle.normal.background = waitingTexture;
+        waitingStyle.border = border;
 
         activeStyle = new GUIStyle(panelStyle);
         activeStyle.normal.background = activeTexture;
+        activeStyle.border = border;
 
         titleStyle = new GUIStyle(GUI.skin.label)
         {
@@ -419,12 +445,14 @@ public class RanchUI : MonoBehaviour
             wordWrap = true,
             alignment = TextAnchor.UpperLeft
         };
-        bodyStyle.normal.textColor = Color.white;
+        bodyStyle.normal.textColor = RanchVisuals.TextPrimary;
 
         smallStyle = new GUIStyle(bodyStyle)
         {
             fontSize = 16
         };
+        // Secondary information sits back so the primary numbers lead.
+        smallStyle.normal.textColor = RanchVisuals.TextMuted;
 
         centeredStyle = new GUIStyle(bodyStyle)
         {
@@ -451,11 +479,4 @@ public class RanchUI : MonoBehaviour
         stylesReady = true;
     }
 
-    private static Texture2D MakeTexture(Color color)
-    {
-        Texture2D texture = new Texture2D(1, 1);
-        texture.SetPixel(0, 0, color);
-        texture.Apply();
-        return texture;
-    }
 }

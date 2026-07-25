@@ -64,6 +64,7 @@ public class RanchJuiceSystem : MonoBehaviour
     private Transform sparkleRoot;
 
     private Light sunLight;
+    private Light fillLight;
     private Camera trackedCamera;
     private float shakeStrength;
     private float shakeRemaining;
@@ -203,17 +204,20 @@ public class RanchJuiceSystem : MonoBehaviour
                 daylight
             );
 
-            Color sky = Color.Lerp(
-                new Color(0.04f, 0.05f, 0.13f),
-                new Color(0.42f, 0.66f, 0.92f),
-                daylight
-            );
+            // Dawn and dusk warm the sky; midday is clear blue, night deep navy.
+            Color daySky = new Color(0.42f, 0.66f, 0.92f);
+            Color nightSky = new Color(0.03f, 0.04f, 0.11f);
+            Color duskSky = new Color(0.85f, 0.45f, 0.28f);
 
-            RenderSettings.ambientLight = Color.Lerp(
-                new Color(0.16f, 0.17f, 0.28f),
-                new Color(0.62f, 0.64f, 0.68f),
-                daylight
-            );
+            // Peaks at the horizon crossings (dawn/dusk), zero at noon/midnight.
+            float horizon = 1f - Mathf.Abs(daylight * 2f - 1f);
+            float goldenHour = Mathf.Pow(Mathf.Clamp01(horizon), 2.5f);
+
+            Color sky = Color.Lerp(nightSky, daySky, daylight);
+            sky = Color.Lerp(sky, duskSky, goldenHour * 0.65f);
+
+            Color ground = new Color(0.20f, 0.17f, 0.12f);
+            RanchVisuals.ApplyAtmosphere(sky, ground, daylight);
 
             Camera cam = ResolveCamera();
             if (cam != null)
@@ -259,10 +263,33 @@ public class RanchJuiceSystem : MonoBehaviour
         sunLight = sun.AddComponent<Light>();
         sunLight.type = LightType.Directional;
         sunLight.shadows = LightShadows.Soft;
+        sunLight.shadowStrength = 0.72f;
+        sunLight.shadowBias = 0.03f;
+        sunLight.shadowNormalBias = 0.35f;
 
         // Registering the sun keeps later lookups free and lets Unity's ambient
         // lighting track it.
         RenderSettings.sun = sunLight;
+
+        RanchVisuals.ApplyShadowSettings();
+        EnsureFillLight();
+    }
+
+    // A dim, shadowless light aimed from the opposite side. Without it the
+    // unlit faces of every primitive fall to near-black and the world reads as
+    // flat silhouettes.
+    private void EnsureFillLight()
+    {
+        if (fillLight != null)
+            return;
+
+        GameObject fill = new GameObject("Ranch Fill Light");
+        fillLight = fill.AddComponent<Light>();
+        fillLight.type = LightType.Directional;
+        fillLight.shadows = LightShadows.None;
+        fillLight.intensity = 0.28f;
+        fillLight.color = new Color(0.62f, 0.72f, 0.95f);
+        fill.transform.rotation = Quaternion.Euler(28f, 215f, 0f);
     }
 
     private Camera ResolveCamera()

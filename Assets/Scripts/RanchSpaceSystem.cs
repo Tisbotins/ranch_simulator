@@ -343,8 +343,14 @@ public class RanchSpaceSystem : MonoBehaviour
             cam.backgroundColor = planet.SkyColor;
         }
 
-        RenderSettings.ambientLight = planet.SkyColor * 1.6f + new Color(0.15f, 0.15f, 0.15f);
-        RenderSettings.fogColor = planet.SkyColor;
+        // Alien skies get the same fog + gradient ambient treatment as the
+        // homestead, tinted by the planet's own ranch colour so the ground
+        // bounce matches what grows there.
+        RanchVisuals.ApplyAtmosphere(
+            planet.SkyColor,
+            planet.RanchColor * 0.35f,
+            0.55f
+        );
 
         TintRanchTree(planet.RanchColor);
     }
@@ -499,11 +505,24 @@ public class RanchSpaceSystem : MonoBehaviour
         if (stylesReady)
             return;
 
-        panelTexture = MakeTexture(new Color(0.03f, 0.02f, 0.08f, 0.96f));
-        buttonTexture = MakeTexture(new Color(0.35f, 0.20f, 0.55f, 1f));
+        const int radius = 14;
+        RectOffset border = RanchVisuals.PanelBorder(radius);
+
+        // Deep-space violet, to distinguish the rocket console from the
+        // homestead's blue-grey panels.
+        panelTexture = RanchVisuals.CreatePanelTexture(
+            new Color(0.10f, 0.07f, 0.20f, 0.97f),
+            new Color(0.03f, 0.02f, 0.07f, 0.98f),
+            new Color(0.52f, 0.42f, 0.85f, 0.9f), radius);
+
+        buttonTexture = RanchVisuals.CreatePanelTexture(
+            new Color(0.42f, 0.26f, 0.66f, 1f),
+            new Color(0.22f, 0.12f, 0.40f, 1f),
+            new Color(0.72f, 0.58f, 1f, 0.95f), radius);
 
         panelStyle = new GUIStyle(GUI.skin.box);
         panelStyle.normal.background = panelTexture;
+        panelStyle.border = border;
 
         titleStyle = new GUIStyle(GUI.skin.label)
         {
@@ -530,6 +549,7 @@ public class RanchSpaceSystem : MonoBehaviour
         buttonStyle.normal.background = buttonTexture;
         buttonStyle.hover.background = buttonTexture;
         buttonStyle.active.background = buttonTexture;
+        buttonStyle.border = border;
         buttonStyle.normal.textColor = Color.white;
         buttonStyle.hover.textColor = Color.white;
         buttonStyle.active.textColor = Color.white;
