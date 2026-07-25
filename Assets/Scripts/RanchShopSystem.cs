@@ -1196,6 +1196,8 @@ public class RanchShopSystem : MonoBehaviour
             alignment = TextAnchor.MiddleLeft
         };
         titleStyle.normal.textColor = Color.white;
+        // "RANCH EMPIRE SHOP" banner.
+        RanchVisuals.UseDisplayFont(titleStyle);
 
         subtitleStyle = new GUIStyle(GUI.skin.label)
         {

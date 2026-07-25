@@ -446,6 +446,10 @@ public class RanchUI : MonoBehaviour
             alignment = TextAnchor.UpperLeft
         };
         bodyStyle.normal.textColor = RanchVisuals.TextPrimary;
+        // The resource panel is column-aligned text whose numbers change every
+        // frame; a monospaced face keeps the columns from shifting as digits
+        // are added and removed.
+        RanchVisuals.UseNumericFont(bodyStyle);
 
         smallStyle = new GUIStyle(bodyStyle)
         {
@@ -467,6 +471,9 @@ public class RanchUI : MonoBehaviour
             alignment = TextAnchor.MiddleCenter
         };
         healthStyle.normal.textColor = Color.white;
+        // "HP 137/220" sits centred on a bar — monospace stops it sliding
+        // around as the numbers tick.
+        RanchVisuals.UseNumericFont(healthStyle);
 
         largeStyle = new GUIStyle(GUI.skin.label)
         {
@@ -475,6 +482,8 @@ public class RanchUI : MonoBehaviour
             alignment = TextAnchor.MiddleCenter
         };
         largeStyle.normal.textColor = Color.white;
+        // Death / victory / countdown headlines.
+        RanchVisuals.UseDisplayFont(largeStyle);
 
         stylesReady = true;
     }

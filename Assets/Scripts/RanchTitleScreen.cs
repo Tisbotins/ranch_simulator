@@ -614,6 +614,9 @@ public class RanchTitleScreen : MonoBehaviour
             alignment = TextAnchor.MiddleCenter
         };
         titleStyle.normal.textColor = Color.white;
+        // The game title carries the heavy poster face; everything else
+        // inherits the body font from GUI.skin.
+        RanchVisuals.UseDisplayFont(titleStyle);
 
         subtitleStyle = new GUIStyle(GUI.skin.label)
         {

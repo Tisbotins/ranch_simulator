@@ -481,6 +481,9 @@ public class RanchJuiceSystem : MonoBehaviour
             alignment = TextAnchor.MiddleCenter
         };
 
+        // Floating combat text is almost entirely numbers.
+        RanchVisuals.UseNumericFont(popupStyle);
+
         shadowStyle = new GUIStyle(popupStyle);
 
         stylesReady = true;

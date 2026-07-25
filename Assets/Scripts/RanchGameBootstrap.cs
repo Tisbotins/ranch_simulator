@@ -38,6 +38,9 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchCJSystem cj = GetOrAdd<RanchCJSystem>();
         RanchSaveSystem save = GetOrAdd<RanchSaveSystem>();
         RanchSettingsSystem settings = GetOrAdd<RanchSettingsSystem>();
+        // Sets the global IMGUI font before any other OnGUI runs.
+        GetOrAdd<RanchFontHook>();
+
         RanchSpaceSystem space = GetOrAdd<RanchSpaceSystem>();
         RanchJuiceSystem juice = GetOrAdd<RanchJuiceSystem>();
         RanchMomentumSystem momentum = GetOrAdd<RanchMomentumSystem>();

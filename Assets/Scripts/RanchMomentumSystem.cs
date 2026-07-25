@@ -259,6 +259,9 @@ public class RanchMomentumSystem : MonoBehaviour
         };
         labelStyle.normal.textColor = new Color(1f, 0.78f, 0.35f);
 
+        // Fever multiplier readout ("x1.45") sits centred and ticks fast.
+        RanchVisuals.UseNumericFont(labelStyle);
+
         stylesReady = true;
     }
 

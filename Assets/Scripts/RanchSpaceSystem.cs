@@ -531,6 +531,8 @@ public class RanchSpaceSystem : MonoBehaviour
             alignment = TextAnchor.MiddleCenter
         };
         titleStyle.normal.textColor = new Color(0.85f, 0.80f, 1f);
+        // "RANCH ROCKET CONSOLE" banner.
+        RanchVisuals.UseDisplayFont(titleStyle);
 
         bodyStyle = new GUIStyle(GUI.skin.label)
         {

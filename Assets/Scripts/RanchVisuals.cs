@@ -319,6 +319,182 @@ public static class RanchVisuals
         return texture;
     }
 
+    // ------------------------------------------------------------ typography
+
+    // Fonts are created from the operating system rather than shipped as
+    // assets, so no font files (or their licences) need to live in the repo.
+    // Each role lists fallbacks in priority order — Unity walks the list and
+    // uses the first family the machine actually has, so Windows, macOS, and
+    // Linux each land on something sensible.
+
+    private static readonly string[] DisplayFamilies =
+    {
+        // Windows                     macOS                    Linux
+        "Impact", "Haettenschweiler", "Arial Black",
+        "Franklin Gothic Heavy", "Futura", "Gill Sans",
+        "Helvetica Neue", "DejaVu Sans", "Arial", "Helvetica"
+    };
+
+    private static readonly string[] BodyFamilies =
+    {
+        "Segoe UI", "SF Pro Text", "Helvetica Neue", "Avenir Next", "Avenir",
+        "Roboto", "Noto Sans", "DejaVu Sans", "Verdana", "Tahoma",
+        "Arial", "Helvetica"
+    };
+
+    // Monospaced so changing digits keep a constant width. Without this a HUD
+    // value ticking 9 -> 10 shifts everything after it and the numbers jitter.
+    private static readonly string[] NumericFamilies =
+    {
+        "Consolas", "SF Mono", "Menlo", "Monaco", "DejaVu Sans Mono",
+        "Roboto Mono", "Liberation Mono", "Courier New", "Courier"
+    };
+
+    private static string[] installedFamilies;
+
+    private static Font displayFont;
+    private static Font bodyFont;
+    private static Font numericFont;
+    private static bool fontsResolved;
+
+    /// <summary>Heavy poster face for titles and headings.</summary>
+    public static Font DisplayFont { get { EnsureFonts(); return displayFont; } }
+
+    /// <summary>Clean humanist face for descriptions and menus.</summary>
+    public static Font BodyFont { get { EnsureFonts(); return bodyFont; } }
+
+    /// <summary>Monospaced face for HUD numbers and stat readouts.</summary>
+    public static Font NumericFont { get { EnsureFonts(); return numericFont; } }
+
+    private static void EnsureFonts()
+    {
+        if (fontsResolved)
+            return;
+
+        fontsResolved = true;
+        displayFont = ResolveFont(DisplayFamilies);
+        bodyFont = ResolveFont(BodyFamilies);
+        numericFont = ResolveFont(NumericFamilies);
+
+        // Which families won is machine-dependent, so state it once. "built-in"
+        // means none of the chain was installed and IMGUI's default is used.
+        Debug.Log(
+            "Ranch fonts — display: " + DescribeFont(displayFont) +
+            ", body: " + DescribeFont(bodyFont) +
+            ", numeric: " + DescribeFont(numericFont)
+        );
+    }
+
+    private static string DescribeFont(Font font)
+    {
+        return font != null ? font.name : "built-in";
+    }
+
+    // Only families the machine actually has are requested.
+    // Font.CreateDynamicFontFromOSFont does NOT skip missing families — asking
+    // for a font that is not installed logs "Unable to load font face for [X]"
+    // and falls back anyway (e.g. Segoe UI is Windows-only, so a macOS build
+    // warns on every launch). Checking the installed list first keeps the
+    // console clean and makes the fallback chain actually work.
+    //
+    // A null result is safe and meaningful: IMGUI falls back to the built-in
+    // font, so a machine with none of these families still renders correctly.
+    private static Font ResolveFont(string[] families)
+    {
+        if (installedFamilies == null)
+        {
+            try
+            {
+                installedFamilies = Font.GetOSInstalledFontNames();
+            }
+            catch
+            {
+                // Some platforms disallow font enumeration entirely.
+            }
+
+            if (installedFamilies == null)
+                installedFamilies = new string[0];
+        }
+
+        for (int i = 0; i < families.Length; i++)
+        {
+            if (!IsInstalled(families[i]))
+                continue;
+
+            try
+            {
+                Font font = Font.CreateDynamicFontFromOSFont(families[i], 16);
+                if (font != null)
+                    return font;
+            }
+            catch
+            {
+                // Try the next family in the chain.
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsInstalled(string family)
+    {
+        string wanted = Normalize(family);
+
+        for (int i = 0; i < installedFamilies.Length; i++)
+        {
+            if (Normalize(installedFamilies[i]) == wanted)
+                return true;
+        }
+
+        return false;
+    }
+
+    // Installed names vary in spacing and case between platforms
+    // ("Helvetica Neue" vs "HelveticaNeue"), so compare on a reduced form.
+    private static string Normalize(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        System.Text.StringBuilder builder =
+            new System.Text.StringBuilder(value.Length);
+
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (c == ' ' || c == '-' || c == '_')
+                continue;
+
+            builder.Append(char.ToLowerInvariant(c));
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Applies the body font as the global IMGUI default. Because no GUIStyle
+    /// in the project sets its own font, every style in every menu inherits
+    /// this in one step.
+    /// </summary>
+    public static void ApplyGlobalFont()
+    {
+        if (GUI.skin != null && BodyFont != null)
+            GUI.skin.font = BodyFont;
+    }
+
+    /// <summary>Assigns a role font, leaving the style's size and colour alone.</summary>
+    public static void UseDisplayFont(GUIStyle style)
+    {
+        if (style != null && DisplayFont != null)
+            style.font = DisplayFont;
+    }
+
+    public static void UseNumericFont(GUIStyle style)
+    {
+        if (style != null && NumericFont != null)
+            style.font = NumericFont;
+    }
+
     // ------------------------------------------------------------ UI palette
 
     public static readonly Color PanelTop = new Color(0.11f, 0.13f, 0.17f, 0.95f);
