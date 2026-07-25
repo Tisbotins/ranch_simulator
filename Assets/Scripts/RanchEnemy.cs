@@ -824,12 +824,32 @@ public class RanchEnemy : MonoBehaviour
             return;
         }
 
-        float reward = (12f + Tier * 18f) * (IsBoss ? 2f : 1f);
+        Vector3 deathPosition = transform.position;
+
+        // Ranch Fever rewards chained kills, so the payout scales with momentum.
+        float momentumMultiplier = core.Momentum != null
+            ? core.Momentum.RewardMultiplier
+            : 1f;
+
+        float reward = (12f + Tier * 18f) * (IsBoss ? 2f : 1f) * momentumMultiplier;
         core.Inventory.AddMoney(reward);
         core.Progression.AddExperience(IsBoss ? 0f : 18f + Tier * 12f + SpawnWave * 2f, "Enemy defeated");
+
+        if (core.Momentum != null)
+            core.Momentum.RegisterKill(deathPosition, IsBoss);
+
+        RanchJuiceSystem.Popup(
+            deathPosition,
+            "+$" + reward.ToString("F0"),
+            new Color(0.55f, 1f, 0.55f),
+            IsBoss ? 30f : 22f
+        );
+        RanchJuiceSystem.Sparkle(deathPosition, new Color(1f, 0.85f, 0.35f), IsBoss ? 12 : 5);
+        if (IsBoss)
+            RanchJuiceSystem.Shake(0.28f, 0.45f);
+
         owner.NotifyEnemyDefeated(this);
         if (IsBoss) core.Bosses.NotifyBossDefeated(this, SpawnWave);
-        else core.ShowMessage($"{EnemyName} defeated. Earned ${reward:F0}.");
         Destroy(gameObject);
     }
 

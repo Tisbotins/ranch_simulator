@@ -56,10 +56,9 @@ public class RanchPlayerController : MonoBehaviour
             core.ShowMessage("You fell off the map and were returned to safety.");
         }
 
-        if (core.GameWon || core.Health.IsDead || core.Health.IsDowned || core.Shop.IsOpen ||
-            core.Progression.IsOpen || core.Settings.IsOpen ||
-            (core.Classes != null && core.Classes.IsOpen) ||
-            (core.Laboratory != null && core.Laboratory.IsOpen))
+        // IsPlayerBusy covers every menu (including the Ranch Rocket console),
+        // the win state, and dead/downed in one check.
+        if (core.IsPlayerBusy)
         {
             core.Equipment.SetExtractionOverride(false);
             return;

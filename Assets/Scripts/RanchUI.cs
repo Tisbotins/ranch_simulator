@@ -28,11 +28,24 @@ public class RanchUI : MonoBehaviour
     private GUIStyle healthStyle;
     private GUIStyle largeStyle;
     private bool stylesReady;
+    private bool detailPanelOpen;
 
     public void Initialize(RanchGameCore gameCore)
     {
         core = gameCore;
         titleScreen = GetComponent<RanchTitleScreen>();
+    }
+
+    private void Update()
+    {
+        if (core == null || core.IsAnyMenuOpen)
+            return;
+
+        if (titleScreen != null && titleScreen.IsOpen)
+            return;
+
+        if (Input.GetKeyDown(KeyCode.Tab))
+            detailPanelOpen = !detailPanelOpen;
     }
 
     private void OnGUI()
@@ -41,10 +54,9 @@ public class RanchUI : MonoBehaviour
         if (titleScreen != null && titleScreen.IsOpen)
             return;
 
-        if (core == null || core.Inventory == null || core.Shop.IsOpen ||
-            core.Progression.IsOpen || core.Settings.IsOpen ||
-            (core.Classes != null && core.Classes.IsOpen) ||
-            (core.Laboratory != null && core.Laboratory.IsOpen))
+        // The HUD must never draw over a full-screen menu, including the Ranch
+        // Rocket console.
+        if (core == null || core.Inventory == null || core.IsAnyMenuOpen)
         {
             return;
         }
@@ -108,29 +120,65 @@ public class RanchUI : MonoBehaviour
         GUI.matrix = old;
     }
 
+    /// <summary>
+    /// The compact always-on panel. Only the numbers a player acts on moment to
+    /// moment live here; everything else moved behind the Tab detail panel so
+    /// the corner of the screen is no longer a wall of text.
+    /// </summary>
     private void DrawMainPanel()
     {
         int tier = core.Bottles.SelectedTier;
-        StringBuilder text = new StringBuilder();
-        text.AppendLine("Raw Ranch: " + core.Inventory.RawRanch.ToString("F1"));
-        text.AppendLine("Total Ranch: " + core.Inventory.TotalRanchCollected.ToString("F0"));
-        text.AppendLine("Money: $" + core.Inventory.Money.ToString("F0"));
-        text.AppendLine("Bottle: " + core.Bottles.GetTierName(tier));
-        text.AppendLine("Stored: " + core.Inventory.GetBottleCount(tier));
-        text.AppendLine();
-        text.AppendLine("Class: " + core.Classes.CurrentClassName);
-        text.AppendLine("Knowledge Level " + core.Progression.Level + " — " + core.Progression.CurrentPhaseName);
-        text.AppendLine("Knowledge: " + core.Progression.KnowledgePoints + " point(s) | " +
-            core.Progression.Experience.ToString("F0") + "/" + core.Progression.ExperienceToNextLevel.ToString("F0"));
-        text.AppendLine("Tree: " + core.Tree.CurrentStageName);
-        text.AppendLine("Empire: " + core.Shop.CurrentStructureName);
-        text.AppendLine("Weapon: " + core.Equipment.CurrentWeaponName);
-        text.AppendLine("Traps: " + core.Deployables.TrapCount + " owned | " + core.Deployables.ActiveTrapCount + " placed");
-        text.AppendLine("Active Delulus: " + core.Deployables.ActiveDeluluCount + "/" + core.Deployables.CurrentMaxActiveDelulus);
-        text.AppendLine("CJ Heat: " + core.CJHeat + " — " + core.CJ.GetHeatStatus());
-        text.AppendLine("Save: " + core.Save.LastSaveStatus);
 
-        DrawPanel(new Rect(20f, 20f, 440f, 505f), "RANCH SIMULATOR", text.ToString(), bodyStyle);
+        StringBuilder text = new StringBuilder();
+        text.AppendLine("Raw Ranch   " + core.Inventory.RawRanch.ToString("F1"));
+        text.AppendLine("Money       $" + core.Inventory.Money.ToString("F0"));
+        text.AppendLine(
+            "Bottle      " + core.Bottles.GetTierName(tier) +
+            "  x" + core.Inventory.GetBottleCount(tier)
+        );
+
+        DrawPanel(new Rect(20f, 20f, 330f, 150f), "RANCH", text.ToString(), bodyStyle);
+
+        GUI.Label(
+            new Rect(20f, 174f, 330f, 22f),
+            detailPanelOpen ? "TAB — hide details" : "TAB — details",
+            smallStyle
+        );
+
+        if (detailPanelOpen)
+            DrawDetailPanel();
+    }
+
+    /// <summary>Everything that used to clutter the permanent HUD.</summary>
+    private void DrawDetailPanel()
+    {
+        StringBuilder text = new StringBuilder();
+        text.AppendLine("Total Ranch   " + core.Inventory.TotalRanchCollected.ToString("F0"));
+        text.AppendLine("Class         " + core.Classes.CurrentClassName);
+        text.AppendLine("Weapon        " + core.Equipment.CurrentWeaponName);
+        text.AppendLine(
+            "Knowledge     Lv " + core.Progression.Level +
+            " — " + core.Progression.CurrentPhaseName
+        );
+        text.AppendLine(
+            "              " + core.Progression.KnowledgePoints + " pt | " +
+            core.Progression.Experience.ToString("F0") + "/" +
+            core.Progression.ExperienceToNextLevel.ToString("F0")
+        );
+        text.AppendLine("Tree          " + core.Tree.CurrentStageName);
+        text.AppendLine("Empire        " + core.Shop.CurrentStructureName);
+        text.AppendLine(
+            "Traps         " + core.Deployables.TrapCount + " owned / " +
+            core.Deployables.ActiveTrapCount + " placed"
+        );
+        text.AppendLine(
+            "Delulus       " + core.Deployables.ActiveDeluluCount + "/" +
+            core.Deployables.CurrentMaxActiveDelulus
+        );
+        text.AppendLine("CJ Heat       " + core.CJHeat + " — " + core.CJ.GetHeatStatus());
+        text.AppendLine("Save          " + core.Save.LastSaveStatus);
+
+        DrawPanel(new Rect(20f, 200f, 400f, 330f), "DETAILS", text.ToString(), smallStyle);
     }
 
     private void DrawHealthAndStamina()

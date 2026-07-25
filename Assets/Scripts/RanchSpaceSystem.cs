@@ -208,27 +208,23 @@ public class RanchSpaceSystem : MonoBehaviour
 
     private void HandleConsoleToggle()
     {
-        bool blocked =
-            (core.Shop != null && core.Shop.IsOpen) ||
-            (core.Settings != null && core.Settings.IsOpen) ||
-            (core.Progression != null && core.Progression.IsOpen) ||
-            (core.Classes != null && core.Classes.IsOpen) ||
-            (core.Laboratory != null && core.Laboratory.IsOpen) ||
-            (core.Health != null && (core.Health.IsDead || core.Health.IsDowned));
-
-        if (IsOpen && Input.GetKeyDown(KeyCode.Escape))
+        // Closing must always be possible, otherwise the console could trap the
+        // game at timeScale 0. Only OPENING is gated on other menus.
+        if (IsOpen)
         {
-            CloseConsole();
+            if (Input.GetKeyDown(KeyCode.J) || Input.GetKeyDown(KeyCode.Escape))
+                CloseConsole();
+
             return;
         }
 
+        bool blocked =
+            core.IsAnyMenuOpen ||
+            core.GameWon ||
+            (core.Health != null && (core.Health.IsDead || core.Health.IsDowned));
+
         if (Input.GetKeyDown(KeyCode.J) && !blocked)
-        {
-            if (IsOpen)
-                CloseConsole();
-            else
-                OpenConsole();
-        }
+            OpenConsole();
     }
 
     private void OpenConsole()

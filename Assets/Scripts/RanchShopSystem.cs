@@ -249,9 +249,14 @@ public class RanchShopSystem : MonoBehaviour
 
     public void OpenShop()
     {
-        if (IsOpen || core.Health.IsDead || core.Health.IsDowned || core.GameWon || core.Settings.IsOpen ||
+        // Progression is deliberately absent: opening the shop closes the
+        // knowledge menu just below. Space (the Ranch Rocket console) must block
+        // the shop, otherwise it would unpause the world under the open console.
+        if (IsOpen || core.Health.IsDead || core.Health.IsDowned || core.GameWon ||
+            core.Settings.IsOpen ||
             (core.Classes != null && core.Classes.IsOpen) ||
-            (core.Laboratory != null && core.Laboratory.IsOpen))
+            (core.Laboratory != null && core.Laboratory.IsOpen) ||
+            (core.Space != null && core.Space.IsOpen))
             return;
 
         if (core.Progression.IsOpen)

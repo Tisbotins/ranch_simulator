@@ -212,9 +212,11 @@ public class RanchProgressionSystem : MonoBehaviour
 
     public void OpenMenu()
     {
-        if (IsOpen || core.Shop.IsOpen || core.Settings.IsOpen || core.GameWon || core.Health.IsDead ||
+        if (IsOpen || core.Shop.IsOpen || core.Settings.IsOpen || core.GameWon ||
+            core.Health.IsDead || core.Health.IsDowned ||
             (core.Classes != null && core.Classes.IsOpen) ||
-            (core.Laboratory != null && core.Laboratory.IsOpen))
+            (core.Laboratory != null && core.Laboratory.IsOpen) ||
+            (core.Space != null && core.Space.IsOpen))
         {
             return;
         }

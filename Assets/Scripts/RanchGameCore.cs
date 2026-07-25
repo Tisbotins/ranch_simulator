@@ -27,6 +27,8 @@ public class RanchGameCore : MonoBehaviour
     public RanchSaveSystem Save { get; private set; }
     public RanchSettingsSystem Settings { get; private set; }
     public RanchSpaceSystem Space { get; private set; }
+    public RanchJuiceSystem Juice { get; private set; }
+    public RanchMomentumSystem Momentum { get; private set; }
 
     public RanchPlayerController Player { get; private set; }
     public Transform RanchTreeTransform { get; private set; }
@@ -72,7 +74,9 @@ public class RanchGameCore : MonoBehaviour
         RanchCJSystem cj,
         RanchSaveSystem save,
         RanchSettingsSystem settings,
-        RanchSpaceSystem space)
+        RanchSpaceSystem space,
+        RanchJuiceSystem juice,
+        RanchMomentumSystem momentum)
     {
         Inventory = inventory;
         Bottles = bottles;
@@ -95,7 +99,33 @@ public class RanchGameCore : MonoBehaviour
         Save = save;
         Settings = settings;
         Space = space;
+        Juice = juice;
+        Momentum = momentum;
     }
+
+    /// <summary>
+    /// True when any full-screen menu owns the pause/cursor. Every menu must
+    /// check this before opening, otherwise two menus can stack, each capture
+    /// the other's zeroed timeScale, and leave the world paused or unpaused at
+    /// the wrong moment. Keeping the list in one place stops new menus (like the
+    /// Ranch Rocket console) from being forgotten by the older systems.
+    /// </summary>
+    public bool IsAnyMenuOpen =>
+        (Shop != null && Shop.IsOpen) ||
+        (Progression != null && Progression.IsOpen) ||
+        (Settings != null && Settings.IsOpen) ||
+        (Classes != null && Classes.IsOpen) ||
+        (Laboratory != null && Laboratory.IsOpen) ||
+        (Space != null && Space.IsOpen);
+
+    /// <summary>
+    /// True whenever the player should not be receiving gameplay input at all:
+    /// a menu is open, the run is over, or they are dead/downed.
+    /// </summary>
+    public bool IsPlayerBusy =>
+        IsAnyMenuOpen ||
+        GameWon ||
+        (Health != null && (Health.IsDead || Health.IsDowned));
 
     public void RegisterWorld(RanchPlayerController player, Transform ranchTree)
     {

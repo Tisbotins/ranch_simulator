@@ -67,6 +67,26 @@ public class RanchHealthSystem : MonoBehaviour
         float finalDamage = Mathf.Max(1f, combatAdjusted * (1f - armorValues[ArmorLevel]));
         CurrentHealth = Mathf.Max(0f, CurrentHealth - finalDamage);
         DamageFlashTime = 0.2f;
+
+        // Taking a hit breaks your Ranch Fever chain and shakes the camera in
+        // proportion to how hard you were hit.
+        if (core.Momentum != null)
+            core.Momentum.RegisterPlayerHit();
+
+        RanchJuiceSystem.Shake(
+            Mathf.Clamp(finalDamage / Mathf.Max(1f, MaxHealth) * 1.4f, 0.06f, 0.35f),
+            0.3f
+        );
+
+        if (core.Player != null)
+        {
+            RanchJuiceSystem.Popup(
+                core.Player.transform.position,
+                "-" + finalDamage.ToString("F0"),
+                new Color(1f, 0.35f, 0.30f),
+                24f
+            );
+        }
         string prefix = string.IsNullOrEmpty(combatResult) ? "" : combatResult + " — ";
         core.ShowMessage($"{prefix}{source} hit you for {finalDamage:F0} damage.");
         if (CurrentHealth <= 0f) Die();

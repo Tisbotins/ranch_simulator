@@ -126,6 +126,7 @@ public class RanchSettingsSystem : MonoBehaviour
         if (IsOpen || core == null || core.Shop.IsOpen || core.Progression.IsOpen ||
             (core.Classes != null && core.Classes.IsOpen) ||
             (core.Laboratory != null && core.Laboratory.IsOpen) ||
+            (core.Space != null && core.Space.IsOpen) ||
             (titleScreen != null && titleScreen.IsOpen))
         {
             return;
