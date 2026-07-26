@@ -44,6 +44,8 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchSpaceSystem space = GetOrAdd<RanchSpaceSystem>();
         RanchJuiceSystem juice = GetOrAdd<RanchJuiceSystem>();
         RanchMomentumSystem momentum = GetOrAdd<RanchMomentumSystem>();
+        RanchDialogueSystem dialogue = GetOrAdd<RanchDialogueSystem>();
+        RanchFacilitySystem facility = GetOrAdd<RanchFacilitySystem>();
         RanchWorldBuilder world = GetOrAdd<RanchWorldBuilder>();
         RanchUI ui = GetOrAdd<RanchUI>();
         RanchLanMultiplayer multiplayer = GetOrAdd<RanchLanMultiplayer>();
@@ -72,7 +74,9 @@ public class RanchGameBootstrap : MonoBehaviour
             settings,
             space,
             juice,
-            momentum
+            momentum,
+            dialogue,
+            facility
         );
 
         inventory.Initialize(core);
@@ -98,13 +102,17 @@ public class RanchGameBootstrap : MonoBehaviour
         space.Initialize(core);
         juice.Initialize(core);
         momentum.Initialize(core);
+        dialogue.Initialize(core);
+        facility.Initialize(core);
         ui.Initialize(core);
         multiplayer.Initialize(core);
         titleScreen.Initialize(core, multiplayer);
         world.Initialize(core);
         world.BuildWorld();
         classes.BuildWorldObjects();
-        laboratory.BuildWorldObjects();
+        // The laboratory no longer places a terminal in the open field; the
+        // Research Facility below houses it, staffed by Giada Jade.
+        facility.BuildWorldObjects();
 
         // The save is loaded only after the player selects Single Player.
         titleScreen.Open();

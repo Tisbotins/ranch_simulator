@@ -28,6 +28,18 @@ public class RanchClassSystem : MonoBehaviour
         }
     }
 
+    /// <summary>Display name for any class, not just the current one.</summary>
+    public static string GetClassName(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear: return "Spear";
+            case RanchClassType.Ranged: return "Ranged";
+            case RanchClassType.Summoner: return "Summoner";
+            default: return "Sword";
+        }
+    }
+
     private RanchGameCore core;
     private RanchPlayerController player;
     private GameObject oakberryRoot;
@@ -173,8 +185,52 @@ public class RanchClassSystem : MonoBehaviour
         Cursor.visible = false;
     }
 
+    /// <summary>
+    /// Classes unlock on different progression axes, so each rewards a
+    /// different kind of play rather than one shared currency.
+    /// </summary>
+    public bool IsClassUnlocked(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear:
+                return core.Progression != null && core.Progression.Level >= 3;
+            case RanchClassType.Ranged:
+                return core.Waves != null && core.Waves.HighestWaveCleared >= 10;
+            case RanchClassType.Summoner:
+                return core.Shop != null && core.Shop.StructureLevel >= 3;
+            default:
+                return true;
+        }
+    }
+
+    public string GetClassLockReason(RanchClassType classType)
+    {
+        switch (classType)
+        {
+            case RanchClassType.Spear:
+                return "Reach Ranch Knowledge Level 3";
+            case RanchClassType.Ranged:
+                return "Clear wave 10";
+            case RanchClassType.Summoner:
+                return "Build the Ranch Laboratory";
+            default:
+                return "";
+        }
+    }
+
     public void ChangeClass(RanchClassType newClass)
     {
+        if (!IsClassUnlocked(newClass))
+        {
+            core.ShowMessage(
+                GetClassName(newClass) + " is locked. " +
+                GetClassLockReason(newClass) + ".",
+                6f
+            );
+            return;
+        }
+
         CurrentClass = newClass;
         core.Equipment.ApplyClass(newClass, true);
 

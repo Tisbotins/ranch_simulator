@@ -29,6 +29,8 @@ public class RanchGameCore : MonoBehaviour
     public RanchSpaceSystem Space { get; private set; }
     public RanchJuiceSystem Juice { get; private set; }
     public RanchMomentumSystem Momentum { get; private set; }
+    public RanchDialogueSystem Dialogue { get; private set; }
+    public RanchFacilitySystem Facility { get; private set; }
 
     public RanchPlayerController Player { get; private set; }
     public Transform RanchTreeTransform { get; private set; }
@@ -76,7 +78,9 @@ public class RanchGameCore : MonoBehaviour
         RanchSettingsSystem settings,
         RanchSpaceSystem space,
         RanchJuiceSystem juice,
-        RanchMomentumSystem momentum)
+        RanchMomentumSystem momentum,
+        RanchDialogueSystem dialogue,
+        RanchFacilitySystem facility)
     {
         Inventory = inventory;
         Bottles = bottles;
@@ -101,6 +105,8 @@ public class RanchGameCore : MonoBehaviour
         Space = space;
         Juice = juice;
         Momentum = momentum;
+        Dialogue = dialogue;
+        Facility = facility;
     }
 
     /// <summary>
@@ -116,7 +122,8 @@ public class RanchGameCore : MonoBehaviour
         (Settings != null && Settings.IsOpen) ||
         (Classes != null && Classes.IsOpen) ||
         (Laboratory != null && Laboratory.IsOpen) ||
-        (Space != null && Space.IsOpen);
+        (Space != null && Space.IsOpen) ||
+        (Dialogue != null && Dialogue.IsOpen);
 
     /// <summary>
     /// True whenever the player should not be receiving gameplay input at all:
