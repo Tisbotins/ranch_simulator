@@ -100,7 +100,6 @@ public class RanchHealthSystem : MonoBehaviour
     public float GetNextHealthCost() => HealthLevel >= healthValues.Length - 1 ? -1f : healthCosts[HealthLevel];
     public float GetNextArmorCost() => ArmorLevel >= armorValues.Length - 1 ? -1f : armorCosts[ArmorLevel];
     public float GetNextRegenerationCost() => RegenerationLevel >= regenValues.Length - 1 ? -1f : regenCosts[RegenerationLevel];
-    public float GetFullHealCost() => CurrentHealth >= MaxHealth ? 0f : Mathf.Max(25f, Mathf.Ceil((MaxHealth - CurrentHealth) * 1.25f));
 
     public void BuyHealthUpgrade()
     {
@@ -137,15 +136,6 @@ public class RanchHealthSystem : MonoBehaviour
         core.ShowMessage($"Regeneration upgraded to {RegenerationPerSecond:0.00} HP/sec.");
     }
 
-    public void BuyFullHeal()
-    {
-        float cost = GetFullHealCost();
-        if (cost <= 0f) { core.ShowMessage("You are already at full health."); return; }
-        if (!core.Inventory.TrySpendMoney(cost)) { core.ShowMessage($"Need ${cost:F0} for a full heal."); return; }
-        CurrentHealth = MaxHealth;
-        core.Save.RequestSave();
-        core.ShowMessage("Health restored to full.");
-    }
 
     public void RestoreState(float currentHealth, int healthLevel, int armorLevel, int regenerationLevel)
     {

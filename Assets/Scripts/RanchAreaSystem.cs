@@ -17,9 +17,9 @@ public class RanchAreaSystem : MonoBehaviour
     private readonly float[] unlockRequirements =
     {
         0f,
-        500f,
-        2000f,
-        6000f
+        7500f,
+        15000f,
+        30000f
     };
 
     private readonly bool[] unlocked =

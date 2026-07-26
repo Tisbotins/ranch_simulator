@@ -5,6 +5,14 @@ public class RanchPlayerController : MonoBehaviour
     public string CurrentPrompt { get; private set; } = "";
     public bool IsExtracting { get; private set; }
     public float MoveSpeed = 6f;
+    public float JumpHeight = 1.6f;
+    public float Gravity = 18f;
+
+    /// <summary>Crawling capsule height, low enough for vents and gaps.</summary>
+    private const float CrawlHeight = 0.9f;
+    private const float CrawlSpeedMultiplier = 0.42f;
+
+    public bool IsCrawling => isCrawling;
     public float MouseSensitivity = 2.2f;
     public float InteractionRange = 3.2f;
     public float FallRecoveryHeight = -8f;
@@ -14,6 +22,9 @@ public class RanchPlayerController : MonoBehaviour
     private Camera playerCamera;
     private float cameraPitch = 15f;
     private float yVelocity;
+    private bool isCrawling;
+    private float standingHeight = 2f;
+    private Vector3 standingCenter = new Vector3(0f, 1f, 0f);
     private float weaponAnimation;
     private bool heavyAnimation;
     private int animationCombo;
@@ -39,6 +50,14 @@ public class RanchPlayerController : MonoBehaviour
         core = gameCore;
         controller = characterController;
         playerCamera = camera;
+
+        // Remember the real capsule so crawling can restore it exactly.
+        if (controller != null)
+        {
+            standingHeight = controller.height;
+            standingCenter = controller.center;
+        }
+
         lastSafePosition = transform.position;
         lastSafeRotation = transform.eulerAngles.y;
         LockCursor();
@@ -81,11 +100,18 @@ public class RanchPlayerController : MonoBehaviour
     private void HandleMovement()
     {
         transform.Rotate(Vector3.up * Input.GetAxis("Mouse X") * MouseSensitivity);
+
+        // Horizontal rotation is already unlimited. Vertically the camera now
+        // sweeps from near-underneath to near-overhead. It stops short of a
+        // true 180 because at the poles the camera's LookAt has no stable up
+        // vector and the view flips.
         cameraPitch = Mathf.Clamp(
             cameraPitch - Input.GetAxis("Mouse Y") * MouseSensitivity,
-            -5f,
-            55f
+            -80f,
+            80f
         );
+
+        UpdateCrawl();
 
         if (slowTimer > 0f)
         {
@@ -109,13 +135,76 @@ public class RanchPlayerController : MonoBehaviour
         if (controller.isGrounded && yVelocity < 0f)
             yVelocity = -2f;
 
-        yVelocity += -18f * Time.deltaTime;
+        // Jump. Crawling blocks it — you cannot leap from a crawl, and jumping
+        // out of a crawl space would clip you into the ceiling.
+        if (Input.GetKeyDown(KeyCode.Space) && controller.isGrounded && !isCrawling)
+        {
+            // v = sqrt(2 * g * h): reach JumpHeight exactly under this gravity.
+            yVelocity = Mathf.Sqrt(2f * Gravity * JumpHeight);
+        }
+
+        yVelocity += -Gravity * Time.deltaTime;
 
         float movementMultiplier = core.Combat.MovementMultiplier * slowMultiplier;
+        if (isCrawling)
+            movementMultiplier *= CrawlSpeedMultiplier;
+
         Vector3 velocity = move * MoveSpeed * movementMultiplier + knockbackVelocity;
         velocity.y = yVelocity;
         controller.Move(velocity * Time.deltaTime);
         knockbackVelocity = Vector3.Lerp(knockbackVelocity, Vector3.zero, 7f * Time.deltaTime);
+    }
+
+    /// <summary>
+    /// Hold C to crawl: the capsule shrinks so you fit through low gaps, and
+    /// you move slower. Standing back up is refused while something is directly
+    /// overhead, otherwise the controller would pop up through the ceiling.
+    /// </summary>
+    private void UpdateCrawl()
+    {
+        bool wantsCrawl = Input.GetKey(KeyCode.C);
+
+        if (wantsCrawl == isCrawling)
+            return;
+
+        if (!wantsCrawl && IsBlockedOverhead())
+            return;
+
+        isCrawling = wantsCrawl;
+        ApplyCapsuleHeight(isCrawling ? CrawlHeight : standingHeight);
+    }
+
+    private void ApplyCapsuleHeight(float height)
+    {
+        if (controller == null)
+            return;
+
+        controller.height = height;
+        // Keep the capsule's base planted while only its top moves.
+        controller.center = new Vector3(
+            standingCenter.x,
+            standingCenter.y - (standingHeight - height) * 0.5f,
+            standingCenter.z
+        );
+    }
+
+    private bool IsBlockedOverhead()
+    {
+        if (controller == null)
+            return false;
+
+        float needed = standingHeight - CrawlHeight + 0.1f;
+        Vector3 origin = transform.position + controller.center + Vector3.up * (CrawlHeight * 0.5f);
+
+        return Physics.SphereCast(
+            origin,
+            controller.radius * 0.9f,
+            Vector3.up,
+            out _,
+            needed,
+            ~0,
+            QueryTriggerInteraction.Ignore
+        );
     }
 
     public Vector3 GetDesiredMoveDirection()

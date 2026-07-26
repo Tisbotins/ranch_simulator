@@ -78,8 +78,8 @@ public class RanchCombatSystem : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.LeftControl))
             TryDodge();
 
-        if (weaponReady && !IsBlocking &&
-            (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.Space)))
+        // Space is the jump key; light attack is left-click only.
+        if (weaponReady && !IsBlocking && Input.GetMouseButtonDown(0))
         {
             TryLightAttack();
         }

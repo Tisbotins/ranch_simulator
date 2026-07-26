@@ -678,9 +678,8 @@ public class RanchLanMultiplayer : MonoBehaviour
         if (now < nextGuestAttack)
             return;
 
-        bool light =
-            Input.GetMouseButtonDown(0) ||
-            Input.GetKeyDown(KeyCode.Space);
+        // Space is the jump key; light attack is left-click only.
+        bool light = Input.GetMouseButtonDown(0);
 
         bool heavy = Input.GetKeyDown(KeyCode.Q);
 

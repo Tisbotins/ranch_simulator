@@ -914,42 +914,6 @@ public class RanchShopSystem : MonoBehaviour
         );
     }
 
-    private void DrawWeaponCard(Rect rect, RanchWeaponType weapon, string role)
-    {
-        bool unlocked = core.Equipment.IsWeaponUnlocked(weapon);
-        bool equipped = core.Equipment.EquippedWeapon == weapon;
-        float cost = core.Equipment.GetWeaponUnlockCost(weapon);
-        string weaponName = weapon == RanchWeaponType.Sword
-            ? "RANCH SWORD"
-            : weapon == RanchWeaponType.Spear ? "RANCH SPEAR" : "RANCH BOW";
-
-        DrawCard(
-            rect,
-            weaponName,
-            role + "\n\n" + core.Equipment.GetWeaponDescription(weapon) +
-            "\n\nStatus: " + (equipped ? "EQUIPPED IN SLOT 2" : unlocked ? "UNLOCKED" : "LOCKED"),
-            smallBodyStyle
-        );
-
-        string buttonText;
-        if (equipped)
-            buttonText = "EQUIPPED";
-        else if (unlocked)
-            buttonText = "EQUIP WEAPON";
-        else
-            buttonText = "UNLOCK & EQUIP — $" + cost.ToString("F0");
-
-        bool old = GUI.enabled;
-        GUI.enabled = !equipped;
-        if (GUI.Button(
-            new Rect(rect.x + 35f, rect.y + rect.height - 75f, rect.width - 70f, 52f),
-            buttonText,
-            buttonStyle))
-        {
-            core.Equipment.BuyOrEquipWeapon(weapon);
-        }
-        GUI.enabled = old;
-    }
 
     private void DrawDefensePage()
     {
@@ -975,27 +939,13 @@ public class RanchShopSystem : MonoBehaviour
             regenCost < 0f ? "REGEN MAXED" : "UPGRADE — $" + regenCost.ToString("F0"),
             regenCost >= 0f, core.Health.BuyRegenerationUpgrade);
 
-        float healCost = core.Health.GetFullHealCost();
-        DrawCard(new Rect(55f, 520f, 470f, 270f), "RANCH MEDICAL BAY",
-            "Current health: " + core.Health.CurrentHealth.ToString("F0") + " / " + core.Health.MaxHealth.ToString("F0") +
-            "\n\nBuy a full heal before a difficult wave or the CJ final battle.", smallBodyStyle);
-        DrawButton(new Rect(90f, 710f, 400f, 52f),
-            healCost <= 0f ? "ALREADY FULL HEALTH" : "FULL HEAL — $" + healCost.ToString("F0"),
-            healCost > 0f, core.Health.BuyFullHeal);
-
-        DrawCard(new Rect(565f, 520f, 470f, 270f), "RANCH TRAPS — SLOT 3",
+        DrawCard(new Rect(55f, 520f, 470f, 270f), "RANCH TRAPS — SLOT 3",
             "Owned: " + core.Deployables.TrapCount +
             "\nPlaced: " + core.Deployables.ActiveTrapCount +
             "\n\nPlace with Left Click or F. Traps damage, stun, and knock enemies back. Unused traps expire after 120 seconds.", smallBodyStyle);
-        DrawButton(new Rect(600f, 710f, 400f, 52f),
+        DrawButton(new Rect(90f, 710f, 400f, 52f),
             "BUY " + RanchDeployableSystem.TrapPackSize + " TRAPS — $" + RanchDeployableSystem.TrapPackCost.ToString("F0"),
             true, core.Deployables.BuyTrapPack);
-
-        DrawCard(new Rect(1075f, 520f, 470f, 270f), "CLASS EQUIPMENT",
-            "The Delulu Wand has moved to the Summoner class.\n\nTalk to Dr. Oakberry to become a Summoner, then purchase wand tiers and modifications from the Weapons tab.", smallBodyStyle);
-        DrawButton(new Rect(1110f, 710f, 400f, 52f),
-            core.Classes.CurrentClass == RanchClassType.Summoner ? "SUMMONER CLASS ACTIVE" : "VISIT DR. OAKBERRY",
-            false, null);
     }
 
     private void DrawAutomationPage()
