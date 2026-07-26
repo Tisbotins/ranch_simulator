@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class RanchDrewSystem : MonoBehaviour
@@ -24,6 +25,66 @@ public class RanchDrewSystem : MonoBehaviour
     }
 
     public float GetUpgradeCost() => !IsHired ? 100f : 100f + Level * Level * 85f;
+
+    /// <summary>Drew's conversation, wrapping the hire/upgrade purchase.</summary>
+    public void TalkToDrew()
+    {
+        if (core == null || core.Dialogue == null)
+        {
+            HireOrUpgrade();
+            return;
+        }
+
+        if (Level >= 10)
+        {
+            core.Dialogue.Begin(
+                "Drew",
+                "I'm as good as I get, boss. Ten out of ten. Peak Drew.",
+                "Anything past this and you'd have to invent a whole new Drew."
+            );
+            return;
+        }
+
+        float cost = GetUpgradeCost();
+        bool affordable = core.Inventory != null && core.Inventory.Money >= cost;
+
+        List<RanchDialogueSystem.Choice> options =
+            new List<RanchDialogueSystem.Choice>
+            {
+                new RanchDialogueSystem.Choice
+                {
+                    Text = (IsHired ? "Upgrade Drew" : "Hire Drew") +
+                           "  —  $" + cost.ToString("F0"),
+                    Enabled = affordable,
+                    DisabledReason = "Need $" + cost.ToString("F0"),
+                    OnChosen = HireOrUpgrade
+                },
+                new RanchDialogueSystem.Choice
+                {
+                    Text = "Maybe later.",
+                    OnChosen = null
+                }
+            };
+
+        if (!IsHired)
+        {
+            core.Dialogue.BeginWithChoices(
+                "Drew",
+                options,
+                "Hey! Hi. Hello. You're the one with the tree, right?",
+                "Look, I'll be honest — I don't fully understand the ranch. But I can extract it and I can bottle it, and I'll do it all day without complaining.",
+                "Give me a job?"
+            );
+            return;
+        }
+
+        core.Dialogue.BeginWithChoices(
+            "Drew",
+            options,
+            "Level " + Level + " and going strong, boss.",
+            "Put a bit more into me and I'll work faster. That's basically the whole pitch."
+        );
+    }
 
     public void HireOrUpgrade()
     {

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public enum RanchClassType
@@ -145,6 +146,67 @@ public class RanchClassSystem : MonoBehaviour
             10f
         );
         core.Save?.RequestSave();
+    }
+
+    /// <summary>
+    /// Dr. Oakberry's conversation. Classes are offered as dialogue choices so
+    /// the unlock conditions are visible in-fiction: a locked class still
+    /// appears, greyed out, with the requirement attached, instead of silently
+    /// not being there.
+    /// </summary>
+    public void TalkToOakberry()
+    {
+        if (core == null || core.Dialogue == null)
+            return;
+
+        if (!OakberryIntroduced)
+        {
+            core.Dialogue.Begin(
+                "Dr. Oakberry",
+                "Ah — you're the one working that tree. I've been watching the yields.",
+                "Come back once you've earned a Ranch Knowledge Point. I can't teach technique to someone who hasn't learned anything yet."
+            );
+            return;
+        }
+
+        List<RanchDialogueSystem.Choice> options =
+            new List<RanchDialogueSystem.Choice>();
+
+        foreach (RanchClassType classType in new[]
+                 {
+                     RanchClassType.Sword,
+                     RanchClassType.Spear,
+                     RanchClassType.Ranged,
+                     RanchClassType.Summoner
+                 })
+        {
+            RanchClassType captured = classType;
+            bool unlocked = IsClassUnlocked(captured);
+            bool current = CurrentClass == captured;
+
+            options.Add(new RanchDialogueSystem.Choice
+            {
+                Text = current
+                    ? GetClassName(captured) + "  (current)"
+                    : "Train me as " + GetClassName(captured),
+                Enabled = unlocked && !current,
+                DisabledReason = unlocked ? "" : GetClassLockReason(captured),
+                OnChosen = () => ChangeClass(captured)
+            });
+        }
+
+        options.Add(new RanchDialogueSystem.Choice
+        {
+            Text = "Just passing through.",
+            OnChosen = null
+        });
+
+        core.Dialogue.BeginWithChoices(
+            "Dr. Oakberry",
+            options,
+            "You're currently fighting as " + CurrentClassName + ".",
+            "Switching costs nothing, and every tree you've grown stays exactly where you left it. So — what shall it be?"
+        );
     }
 
     public void OpenMenu()

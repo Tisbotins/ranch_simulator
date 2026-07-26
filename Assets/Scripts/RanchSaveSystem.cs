@@ -65,6 +65,9 @@ public class RanchSaveData
     public int spacePlanetIndex;
     public float spaceFuel;
     public bool cosmicCJDefeated;
+
+    // Whether Giada has introduced herself, so she does not do it every reload.
+    public bool metGiada;
 }
 
 public class RanchSaveSystem : MonoBehaviour
@@ -517,6 +520,9 @@ public class RanchSaveSystem : MonoBehaviour
         data.playerZ = position.z;
         data.playerRotationY = core.Player.transform.eulerAngles.y;
 
+        if (core.Facility != null)
+            data.metGiada = core.Facility.HasMetGiada;
+
         if (core.Space != null)
         {
             data.spaceJourneyUnlocked = core.Space.JourneyUnlocked;
@@ -671,6 +677,9 @@ public class RanchSaveSystem : MonoBehaviour
             new Vector3(data.playerX, data.playerY, data.playerZ),
             data.playerRotationY
         );
+
+        if (core.Facility != null)
+            core.Facility.RestoreState(data.metGiada);
 
         if (core.Space != null && data.saveVersion >= 8)
         {

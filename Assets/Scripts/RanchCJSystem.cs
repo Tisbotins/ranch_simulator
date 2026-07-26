@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections;
 using UnityEngine;
 
@@ -248,6 +249,39 @@ public class RanchCJSystem : MonoBehaviour
             return;
         }
 
+        // A confrontation before the fight, but only here at the gate. CJ's
+        // taunts during the battle stay as on-screen messages on purpose —
+        // dialogue pauses the game, and freezing a boss fight to read a modal
+        // box would wreck it.
+        if (core.Dialogue != null)
+        {
+            core.Dialogue.BeginWithChoices(
+                "CJ",
+                new List<RanchDialogueSystem.Choice>
+                {
+                    new RanchDialogueSystem.Choice
+                    {
+                        Text = "Open the gate.",
+                        OnChosen = StartFinalBattle
+                    },
+                    new RanchDialogueSystem.Choice
+                    {
+                        Text = "Not yet.",
+                        OnChosen = null
+                    }
+                },
+                "So the little ranch hand finally walks up to my gate.",
+                "Thirty waves. I sent every one of them, and you kept bottling. I'll admit that's more spine than I expected.",
+                "Come through and I'll take the whole operation back myself. Last chance to walk away."
+            );
+            return;
+        }
+
+        StartFinalBattle();
+    }
+
+    private void StartFinalBattle()
+    {
         if (battleRoutine != null)
             StopCoroutine(battleRoutine);
 

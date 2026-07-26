@@ -53,7 +53,7 @@ public class RanchStation : RanchInteractable
                 break;
             case RanchStationType.BottleUpgrade: core.Upgrades.BuyNextBottleTier(); break;
             case RanchStationType.ToolUpgrade: core.Upgrades.BuyNextToolTier(); break;
-            case RanchStationType.Drew: core.Drew.HireOrUpgrade(); break;
+            case RanchStationType.Drew: core.Drew.TalkToDrew(); break;
             case RanchStationType.CJGate: core.CJ.ChallengeCJ(); break;
             case RanchStationType.Shop: core.Shop.OpenShop(); break;
         }

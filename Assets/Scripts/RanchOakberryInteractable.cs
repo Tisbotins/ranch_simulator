@@ -14,6 +14,6 @@ public class RanchOakberryInteractable : RanchInteractable
     public override void Interact(RanchPlayerController player, bool held, float deltaTime)
     {
         if (!held)
-            classSystem?.OpenMenu();
+            classSystem?.TalkToOakberry();
     }
 }
