@@ -400,6 +400,28 @@ public class RanchSaveSystem : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Deletes every save slot, not just the active one. "Wipe save data" means
+    /// both the host file and the multiplayer guest file — deleting only the
+    /// slot currently selected would silently leave the other behind.
+    /// </summary>
+    public void DeleteAllSaves()
+    {
+        string original = SaveFileName;
+
+        foreach (string slot in new[]
+                 {
+                     "RanchSimulatorSave.json",
+                     "RanchSimulatorGuestSave.json"
+                 })
+        {
+            SaveFileName = slot;
+            DeleteSave();
+        }
+
+        SaveFileName = original;
+    }
+
     public void DeleteSave()
     {
         try

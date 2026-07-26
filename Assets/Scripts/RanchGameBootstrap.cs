@@ -46,6 +46,7 @@ public class RanchGameBootstrap : MonoBehaviour
         RanchMomentumSystem momentum = GetOrAdd<RanchMomentumSystem>();
         RanchDialogueSystem dialogue = GetOrAdd<RanchDialogueSystem>();
         RanchFacilitySystem facility = GetOrAdd<RanchFacilitySystem>();
+        RanchAdminSystem admin = GetOrAdd<RanchAdminSystem>();
         RanchWorldBuilder world = GetOrAdd<RanchWorldBuilder>();
         RanchUI ui = GetOrAdd<RanchUI>();
         RanchLanMultiplayer multiplayer = GetOrAdd<RanchLanMultiplayer>();
@@ -104,6 +105,7 @@ public class RanchGameBootstrap : MonoBehaviour
         momentum.Initialize(core);
         dialogue.Initialize(core);
         facility.Initialize(core);
+        admin.Initialize(core);
         ui.Initialize(core);
         multiplayer.Initialize(core);
         titleScreen.Initialize(core, multiplayer);
