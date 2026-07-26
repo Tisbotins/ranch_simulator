@@ -26,7 +26,7 @@ public class RanchFacilitySystem : MonoBehaviour
     /// <summary>Far outside the play area, at ground level. See class notes.</summary>
     private static readonly Vector3 InteriorOrigin = new Vector3(1000f, 0f, 0f);
 
-    private static readonly Vector3 EntrancePosition = new Vector3(51f, 0f, -7.5f);
+    private static readonly Vector3 EntrancePosition = new Vector3(51f, 0f, 0f);
 
     public bool IsInside { get; private set; }
     public bool HasMetGiada { get; private set; }
@@ -56,7 +56,7 @@ public class RanchFacilitySystem : MonoBehaviour
 
     private void BuildExterior()
     {
-        GameObject root = new GameObject("Ranch Research Facility");
+        GameObject root = new GameObject("Ranch Laboratory");
         root.transform.position = EntrancePosition;
         exteriorRoot = root.transform;
 
@@ -80,21 +80,25 @@ public class RanchFacilitySystem : MonoBehaviour
             new Vector3(0f, 1.8f, -6f), new Vector3(4.4f, 3.6f, 0.15f),
             new Color(0.35f, 0.95f, 0.90f), RanchVisuals.Surface.Emissive
         );
+        // Solid, not a trigger: walking into the door must stop you. Otherwise
+        // you pass through the wall into the empty shell behind it. Pressing E
+        // is the only way in. OverlapSphere still finds solid colliders, so the
+        // interaction prompt is unaffected.
         Collider doorCollider = door.GetComponent<Collider>();
         if (doorCollider != null)
-            doorCollider.isTrigger = true;
+            doorCollider.isTrigger = false;
 
         RanchFacilityDoor entry = door.AddComponent<RanchFacilityDoor>();
         entry.Initialize(this, true);
 
-        Label(root.transform, new Vector3(0f, 6f, -6f), "RANCH RESEARCH FACILITY\nGiada Jade, Lead Researcher");
+        Label(root.transform, new Vector3(0f, 6f, -6f), "RANCH LABORATORY\nGiada Jade, Lead Researcher");
     }
 
     // -------------------------------------------------------------- interior
 
     private void BuildInterior()
     {
-        GameObject root = new GameObject("Ranch Research Facility Interior");
+        GameObject root = new GameObject("Ranch Laboratory Interior");
         root.transform.position = InteriorOrigin;
         interiorRoot = root.transform;
 
@@ -135,7 +139,7 @@ public class RanchFacilitySystem : MonoBehaviour
         );
         Collider exitCollider = exit.GetComponent<Collider>();
         if (exitCollider != null)
-            exitCollider.isTrigger = true;
+            exitCollider.isTrigger = false;
 
         RanchFacilityDoor leave = exit.AddComponent<RanchFacilityDoor>();
         leave.Initialize(this, false);
@@ -176,7 +180,7 @@ public class RanchFacilitySystem : MonoBehaviour
             return;
 
         // Gated on the Laboratory being built, same as the research it houses.
-        if (core.Shop != null && core.Shop.StructureLevel < 3)
+        if (!IsBuilt)
         {
             core.ShowMessage(
                 "The Research Facility is sealed. Build the Ranch Laboratory first.",
@@ -214,10 +218,31 @@ public class RanchFacilitySystem : MonoBehaviour
         core.Player.Teleport(outside, returnRotationY);
     }
 
+    /// <summary>True once the Ranch Laboratory (structure 3) has been bought.</summary>
+    public bool IsBuilt =>
+        core != null && core.Shop != null && core.Shop.StructureLevel >= 3;
+
     private void RefreshVisibility()
     {
+        // The building only exists once you have paid for it, so an unbuilt
+        // laboratory is not standing in the field waiting to be walked into.
+        if (exteriorRoot != null)
+            exteriorRoot.gameObject.SetActive(IsBuilt);
+
         if (interiorRoot != null)
             interiorRoot.gameObject.SetActive(IsInside);
+    }
+
+    private void Update()
+    {
+        // Structure level changes in the shop, so visibility is re-evaluated
+        // rather than set once at build time.
+        if (exteriorRoot == null)
+            return;
+
+        bool shouldShow = IsBuilt && !IsInside;
+        if (exteriorRoot.gameObject.activeSelf != shouldShow)
+            exteriorRoot.gameObject.SetActive(shouldShow);
     }
 
     // -------------------------------------------------------------- dialogue

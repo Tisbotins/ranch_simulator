@@ -697,7 +697,12 @@ public class RanchWorldBuilder : MonoBehaviour
         List<GameObject> groups = new List<GameObject>();
         groups.Add(CreateRoadsideStand(root, new Vector3(23f, 0f, -28f)));
         groups.Add(CreateWorkshop(root, new Vector3(23f, 0f, 26f)));
-        groups.Add(CreateLaboratory(root, new Vector3(51f, 0f, 0f), false));
+        // The Ranch Laboratory is the enterable Research Facility built by
+        // RanchFacilitySystem, so only a placeholder occupies this slot —
+        // the index still has to line up with RefreshEmpireVisual.
+        GameObject laboratorySlot = new GameObject("Ranch Laboratory (Facility)");
+        laboratorySlot.transform.SetParent(root, false);
+        groups.Add(laboratorySlot);
         groups.Add(CreateLaboratory(root, new Vector3(68f, 0f, -24f), true));
         groups.Add(CreateResearchCampus(root, new Vector3(66f, 0f, 24f)));
         groups.Add(CreateIndustrialComplex(root, new Vector3(98f, 0f, -10f)));
