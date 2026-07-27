@@ -84,7 +84,13 @@ public class RanchClassSystem : MonoBehaviour
         Vector3 treePosition = core != null && core.RanchTreeTransform != null
             ? core.RanchTreeTransform.position
             : new Vector3(0f, 0f, 12f);
-        oakberryRoot.transform.position = treePosition + new Vector3(-7f, 0f, -5f);
+        // He used to stand at tree + (-7, 0, -5), which is roughly ON the line
+        // Drew patrols between the Ranch Tree (0, 12) and the Bottle Station
+        // (-13, 0) — so he was crowded by the tree and stood in Drew's path.
+        // Moved to the open ground east of the tree: clear of Drew's route
+        // (entirely on the -x side), ~14 units from the tree, ~10 from the Sell
+        // Station, and still an easy walk from the player's spawn at (0, -10).
+        oakberryRoot.transform.position = treePosition + new Vector3(14f, 0f, -2f);
 
         Material coat = RanchWorldBuilder.CreateRuntimeMaterial(new Color(0.90f, 0.96f, 1f));
         Material skin = RanchWorldBuilder.CreateRuntimeMaterial(new Color(0.72f, 0.48f, 0.30f));
