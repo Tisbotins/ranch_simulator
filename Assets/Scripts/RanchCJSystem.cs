@@ -161,8 +161,11 @@ public class RanchCJSystem : MonoBehaviour
         if (core == null)
             return "CJ Gate unavailable";
 
-        if (core.GameWon || FinalBattleCompleted)
+        if (core.GameWon)
             return "CJ defeated — press R to begin a new game";
+
+        if (FinalBattleCompleted)
+            return "CJ defeated — press J for the Ranch Rocket";
 
         if (FinalBattleActive)
             return "CJ FINAL BATTLE IN PROGRESS";
@@ -178,8 +181,11 @@ public class RanchCJSystem : MonoBehaviour
         if (core == null || core.Waves == null)
             return "Gate unavailable";
 
-        if (core.GameWon || FinalBattleCompleted)
+        if (core.GameWon)
             return "CJ DEFEATED\n\nPress R to erase the completed save and begin a new game.";
+
+        if (FinalBattleCompleted)
+            return "CJ DEFEATED\n\nA cosmic rift opened above the ranch.\nPress J to open the Ranch Rocket console and begin the Cosmic Journey.";
 
         if (FinalBattleActive)
         {
@@ -484,7 +490,9 @@ public class RanchCJSystem : MonoBehaviour
 
         if (core.GameWon || FinalBattleCompleted)
         {
-            gateLabel.text = "CJ DEFEATED\nPRESS R FOR NEW GAME";
+            gateLabel.text = core.GameWon
+                ? "CJ DEFEATED\nPRESS R FOR NEW GAME"
+                : "CJ DEFEATED\nPRESS J — COSMIC JOURNEY";
             gateLabel.color = Color.green;
         }
         else if (FinalBattleActive)

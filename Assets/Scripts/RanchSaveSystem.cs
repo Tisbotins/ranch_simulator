@@ -670,7 +670,15 @@ public class RanchSaveSystem : MonoBehaviour
             data.cjBattleUnlocked,
             data.cjMilestoneIndex
         );
-        core.RestoreProgress(data.bottlesSold, data.cjHeat, data.gameWon);
+        // gameWon means the WHOLE game is finished, which since the Cosmic
+        // Journey means Cosmic CJ, not CJ. Loading a save that only beat CJ as
+        // "won" is fatal: RestoreProgress disables the player and the victory
+        // screen's single action erases the save. Saves made before the journey
+        // existed all carry gameWon = true, so they would load frozen with no
+        // option but deletion, and could never reach the journey because
+        // BeginJourney only runs on a fresh CJ kill.
+        bool fullyComplete = data.gameWon && data.cosmicCJDefeated;
+        core.RestoreProgress(data.bottlesSold, data.cjHeat, fullyComplete);
         core.Waves.RestoreProgress(data.highestWaveCleared);
 
         core.Player.Teleport(
@@ -689,6 +697,19 @@ public class RanchSaveSystem : MonoBehaviour
                 data.spaceFuel,
                 data.cosmicCJDefeated
             );
+        }
+
+        // Must run AFTER RestoreState: that call assigns JourneyUnlocked
+        // straight from the file, so recovering earlier would be silently
+        // overwritten back to false.
+        //
+        // A save that beat CJ but holds no journey progress predates the
+        // Cosmic Journey. Grant it now, otherwise that save can never reach
+        // the endgame: BeginJourney only fires on a fresh CJ kill.
+        if (data.gameWon && !data.cosmicCJDefeated &&
+            core.Space != null && !core.Space.JourneyUnlocked)
+        {
+            core.Space.BeginJourney();
         }
 
         core.NotifyResourcesChanged();
