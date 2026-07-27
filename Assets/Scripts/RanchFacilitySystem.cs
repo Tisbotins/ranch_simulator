@@ -106,18 +106,22 @@ public class RanchFacilitySystem : MonoBehaviour
         Color wall = new Color(0.32f, 0.36f, 0.42f);
         Color glow = new Color(0.45f, 0.95f, 0.85f);
 
-        Slab(root.transform, "Interior Floor", new Vector3(0f, -0.1f, 0f), new Vector3(24f, 0.4f, 20f), floor, RanchVisuals.Surface.Satin);
-        Slab(root.transform, "Interior Ceiling", new Vector3(0f, 6f, 0f), new Vector3(24f, 0.4f, 20f), wall, RanchVisuals.Surface.Matte);
-        Slab(root.transform, "Interior North Wall", new Vector3(0f, 3f, 10f), new Vector3(24f, 6f, 0.5f), wall, RanchVisuals.Surface.Satin);
-        Slab(root.transform, "Interior South Wall", new Vector3(0f, 3f, -10f), new Vector3(24f, 6f, 0.5f), wall, RanchVisuals.Surface.Satin);
-        Slab(root.transform, "Interior West Wall", new Vector3(-12f, 3f, 0f), new Vector3(0.5f, 6f, 20f), wall, RanchVisuals.Surface.Satin);
-        Slab(root.transform, "Interior East Wall", new Vector3(12f, 3f, 0f), new Vector3(0.5f, 6f, 20f), wall, RanchVisuals.Surface.Satin);
+        // The floor is deliberately thick and oversized. A thin slab combined
+        // with a low spawn let the player drop straight through on arrival, and
+        // fall recovery then stranded them in empty space out at x = 1000.
+        // It also overhangs the walls so you cannot slip off an edge.
+        Slab(root.transform, "Interior Floor", new Vector3(0f, -0.6f, 0f), new Vector3(44f, 1.2f, 36f), floor, RanchVisuals.Surface.Satin);
+        Slab(root.transform, "Interior Ceiling", new Vector3(0f, 9f, 0f), new Vector3(44f, 0.6f, 36f), wall, RanchVisuals.Surface.Matte);
+        Slab(root.transform, "Interior North Wall", new Vector3(0f, 4.5f, 17f), new Vector3(40f, 9f, 1f), wall, RanchVisuals.Surface.Satin);
+        Slab(root.transform, "Interior South Wall", new Vector3(0f, 4.5f, -17f), new Vector3(40f, 9f, 1f), wall, RanchVisuals.Surface.Satin);
+        Slab(root.transform, "Interior West Wall", new Vector3(-20f, 4.5f, 0f), new Vector3(1f, 9f, 36f), wall, RanchVisuals.Surface.Satin);
+        Slab(root.transform, "Interior East Wall", new Vector3(20f, 4.5f, 0f), new Vector3(1f, 9f, 36f), wall, RanchVisuals.Surface.Satin);
 
         // Ceiling strips, so the room is lit even though the sun is elsewhere.
         for (int i = -1; i <= 1; i++)
         {
             Slab(root.transform, "Interior Light " + i,
-                new Vector3(i * 7f, 5.7f, 0f), new Vector3(1.2f, 0.15f, 16f),
+                new Vector3(i * 12f, 8.6f, 0f), new Vector3(1.4f, 0.15f, 30f),
                 glow, RanchVisuals.Surface.Emissive);
         }
 
@@ -125,7 +129,7 @@ public class RanchFacilitySystem : MonoBehaviour
         for (int i = -1; i <= 1; i += 2)
         {
             Slab(root.transform, "Lab Bench " + i,
-                new Vector3(i * 8f, 0.9f, 3f), new Vector3(5f, 0.3f, 9f),
+                new Vector3(i * 14f, 0.9f, 4f), new Vector3(6f, 0.3f, 14f),
                 new Color(0.55f, 0.58f, 0.62f), RanchVisuals.Surface.Metal);
         }
 
@@ -134,7 +138,7 @@ public class RanchFacilitySystem : MonoBehaviour
         // Exit pad, mirroring the entrance.
         GameObject exit = Slab(
             root.transform, "Facility Exit",
-            new Vector3(0f, 1.8f, -9.6f), new Vector3(4.4f, 3.6f, 0.2f),
+            new Vector3(0f, 1.8f, -16.6f), new Vector3(4.6f, 3.6f, 0.3f),
             new Color(1f, 0.62f, 0.30f), RanchVisuals.Surface.Emissive
         );
         Collider exitCollider = exit.GetComponent<Collider>();
@@ -144,7 +148,7 @@ public class RanchFacilitySystem : MonoBehaviour
         RanchFacilityDoor leave = exit.AddComponent<RanchFacilityDoor>();
         leave.Initialize(this, false);
 
-        Label(root.transform, new Vector3(0f, 4.2f, -9.6f), "EXIT TO THE RANCH");
+        Label(root.transform, new Vector3(0f, 4.2f, -16.6f), "EXIT TO THE RANCH");
 
         root.SetActive(false);
     }
@@ -153,7 +157,7 @@ public class RanchFacilitySystem : MonoBehaviour
     {
         GameObject giada = new GameObject("Giada Jade");
         giada.transform.SetParent(parent, false);
-        giada.transform.localPosition = new Vector3(0f, 0f, 5f);
+        giada.transform.localPosition = new Vector3(0f, 0f, 9f);
         giada.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
 
         // Lab coat over dark trousers, with jade-green hair to match her name.
@@ -195,10 +199,10 @@ public class RanchFacilitySystem : MonoBehaviour
         IsInside = true;
         RefreshVisibility();
 
-        core.Player.Teleport(InteriorOrigin + new Vector3(0f, 0.2f, -7f), 0f);
-
-        if (!HasMetGiada)
-            TalkToGiada();
+        // Two metres of clearance above a floor whose surface is at y = 0.
+        // Arriving almost touching the floor let the player fall through
+        // before the freshly activated colliders entered the physics scene.
+        core.Player.Teleport(InteriorOrigin + new Vector3(0f, 2f, -13f), 0f);
     }
 
     public void ExitFacility()
@@ -233,8 +237,21 @@ public class RanchFacilitySystem : MonoBehaviour
             interiorRoot.gameObject.SetActive(IsInside);
     }
 
+    /// <summary>Where the player stands on entering, also the recovery point.</summary>
+    public Vector3 InteriorSpawn => InteriorOrigin + new Vector3(0f, 2f, -13f);
+
     private void Update()
     {
+        // If anything drops the player below the interior floor while they are
+        // inside, put them back in the room. The controller's own fall recovery
+        // would send them to their last outdoor position, which is empty space
+        // relative to an interior sitting far out at x = 1000.
+        if (IsInside && core != null && core.Player != null &&
+            core.Player.transform.position.y < -5f)
+        {
+            core.Player.Teleport(InteriorSpawn, 0f);
+        }
+
         // Structure level changes in the shop, so visibility is re-evaluated
         // rather than set once at build time.
         if (exteriorRoot == null)

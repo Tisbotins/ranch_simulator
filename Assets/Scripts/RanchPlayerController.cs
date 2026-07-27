@@ -17,6 +17,10 @@ public class RanchPlayerController : MonoBehaviour
     public float InteractionRange = 3.2f;
     public float FallRecoveryHeight = -8f;
 
+    /// <summary>Keeps the camera from clipping through walls.</summary>
+    private const float CameraCollisionRadius = 0.32f;
+    private const float MinimumCameraDistance = 1.1f;
+
     private RanchGameCore core;
     private CharacterController controller;
     private Camera playerCamera;
@@ -344,8 +348,53 @@ public class RanchPlayerController : MonoBehaviour
     private void UpdateCamera()
     {
         Quaternion rotation = Quaternion.Euler(cameraPitch, transform.eulerAngles.y, 0f);
-        playerCamera.transform.position = transform.position + rotation * new Vector3(0f, 3.8f, -7f);
-        playerCamera.transform.LookAt(transform.position + new Vector3(0f, 1.4f, 0f));
+        Vector3 focus = transform.position + new Vector3(0f, 1.4f, 0f);
+        Vector3 desired = transform.position + rotation * new Vector3(0f, 3.8f, -7f);
+
+        // Pull the camera in when geometry sits between it and the player.
+        // Without this the camera parks itself inside walls and ceilings —
+        // indoors it ended up outside the room entirely, looking at the far
+        // side of a wall.
+        Vector3 offset = desired - focus;
+        float distance = offset.magnitude;
+
+        if (distance > 0.01f)
+        {
+            Vector3 direction = offset / distance;
+            float closest = distance;
+
+            RaycastHit[] hits = Physics.SphereCastAll(
+                focus,
+                CameraCollisionRadius,
+                direction,
+                distance,
+                ~0,
+                QueryTriggerInteraction.Ignore
+            );
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                Transform hitTransform = hits[i].transform;
+
+                // Never collide with the player's own capsule or its model.
+                if (hitTransform == transform || hitTransform.IsChildOf(transform))
+                    continue;
+
+                // A sweep starting inside a collider reports distance 0; that is
+                // not a real obstruction between the focus and the camera.
+                if (hits[i].distance <= 0.01f)
+                    continue;
+
+                if (hits[i].distance < closest)
+                    closest = hits[i].distance;
+            }
+
+            if (closest < distance)
+                desired = focus + direction * Mathf.Max(MinimumCameraDistance, closest - 0.15f);
+        }
+
+        playerCamera.transform.position = desired;
+        playerCamera.transform.LookAt(focus);
     }
 
     private void HandleEquipmentSlots()
