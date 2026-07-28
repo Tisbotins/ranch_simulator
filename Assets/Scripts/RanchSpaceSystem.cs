@@ -1,33 +1,64 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
 /// The Cosmic Journey — the post-CJ endgame.
 ///
-/// Once CJ, the Ultimate Ranchenator, is defeated a cosmic rift opens and the
-/// Ranch Rocket launches. The player travels between planets, each with its own
-/// new type of Ranch. Harvesting Ranch on a planet refines into rocket fuel;
-/// once the tank is full you launch to the next world. The final destination is
-/// the Cosmic Core, where Cosmic CJ controls all the Ranch in the galaxy and
-/// must be defeated for the true ending.
+/// Beating CJ opens a rift and launches the Ranch Rocket. Each world is a real
+/// place the player is teleported to, not a menu: its own ground, sky, Ranch
+/// Tree, hazard, and a nemesis. Evil Drew — the Drew that Cosmic CJ turned —
+/// meets the player on every moon and must be beaten before the rocket will
+/// launch onward. The last world is the Cosmic Core, where Cosmic CJ waits.
 ///
-/// This is a self-contained meta-layer on top of the normal loop: it reuses the
-/// existing extraction/economy (any Ranch collected becomes fuel) and the
-/// existing enemy/wave code for the final boss, and only re-themes the sky and
-/// Ranch Tree per planet.
+/// Design notes that are easy to get wrong and were:
+///
+/// * Surfaces live far apart on +X at ground level, never underground.
+///   RanchPlayerController treats anything below FallRecoveryHeight as fallen
+///   off the map, so a buried world ejects the player the moment they arrive.
+/// * Floors are thick and oversized and the player lands well above them.
+///   A thin slab plus a low spawn let the player drop through before the
+///   freshly activated colliders entered the physics scene.
+/// * Everything stays in one scene, so inventory, waves, saving, and any
+///   multiplayer session keep running while the player is off-world.
 /// </summary>
 [DefaultExecutionOrder(-820)]
 [DisallowMultipleComponent]
 public class RanchSpaceSystem : MonoBehaviour
 {
-    private sealed class Planet
+    /// <summary>What a world does to you while you stand on it.</summary>
+    public enum Hazard
+    {
+        None,
+        SporeBloom,     // drains stamina
+        Emberfall,      // burns health
+        DeepFreeze,     // slows movement
+        PrismFlux,      // reinforcements
+        CosmicPressure  // heavy, relentless damage
+    }
+
+    private sealed class World
     {
         public string Name;
         public string RanchType;
-        public string Intro;
         public float FuelNeeded;
         public Color SkyColor;
         public Color RanchColor;
+        public Color GroundColor;
+        public Hazard Danger;
+        public string HazardName;
+        public string Intro;
+        public string[] DrewLines;
         public bool IsFinal;
+
+        public Transform Surface;
+        public Vector3 Origin;
+        public bool DrewDefeated;
+    }
+
+    // Worlds sit far apart on +X so nothing overlaps the ranch or each other.
+    private static Vector3 OriginFor(int index)
+    {
+        return new Vector3(2000f + index * 600f, 0f, 0f);
     }
 
     public bool JourneyUnlocked { get; private set; }
@@ -37,23 +68,29 @@ public class RanchSpaceSystem : MonoBehaviour
     public float Fuel { get; private set; }
     public bool IsOpen { get; private set; }
 
-    public string CurrentPlanetName =>
-        (planets != null && PlanetIndex >= 0 && PlanetIndex < planets.Length)
-            ? planets[PlanetIndex].Name
-            : "Ranch Homestead";
+    /// <summary>True while the player is standing on an off-world surface.</summary>
+    public bool IsOffWorld { get; private set; }
 
-    public string CurrentRanchType =>
-        (planets != null && PlanetIndex >= 0 && PlanetIndex < planets.Length)
-            ? planets[PlanetIndex].RanchType
-            : "Creamy Ranch";
+    public string CurrentPlanetName => Current != null ? Current.Name : "Ranch Homestead";
+    public string CurrentRanchType => Current != null ? Current.RanchType : "Creamy Ranch";
 
+    private World[] worlds;
     private RanchGameCore core;
-    private Planet[] planets;
     private float lastTotalRanch;
     private float previousTimeScale = 1f;
 
+    private RanchEnemy evilDrew;
+    private bool evilDrewSpawned;
+
     private RanchEnemy cosmicBoss;
     private bool cosmicBossSpawned;
+    // Set only when the boss is actually seen at zero health. A boss that
+    // merely vanishes (scene reload, wave cleanup) must NOT count as a win —
+    // that handed out the true ending for free and permanently locked the save.
+    private bool cosmicBossConfirmedDead;
+
+    private float hazardTimer;
+    private Vector3 ranchReturnPosition = new Vector3(0f, 1.1f, -10f);
 
     private Texture2D panelTexture;
     private Texture2D buttonTexture;
@@ -67,83 +104,228 @@ public class RanchSpaceSystem : MonoBehaviour
     public void Initialize(RanchGameCore gameCore)
     {
         core = gameCore;
-        BuildPlanets();
+        BuildWorldData();
     }
 
-    private void BuildPlanets()
+    private World Current =>
+        worlds != null && PlanetIndex >= 0 && PlanetIndex < worlds.Length
+            ? worlds[PlanetIndex]
+            : null;
+
+    // ------------------------------------------------------------ world data
+
+    private void BuildWorldData()
     {
-        planets = new[]
+        worlds = new[]
         {
-            new Planet
+            new World
             {
                 Name = "Verdant Moon",
                 RanchType = "Mint Ranch",
-                FuelNeeded = 400f,
+                FuelNeeded = 5000f,
                 SkyColor = new Color(0.05f, 0.20f, 0.18f),
                 RanchColor = new Color(0.45f, 0.95f, 0.55f),
+                GroundColor = new Color(0.16f, 0.34f, 0.22f),
+                Danger = Hazard.SporeBloom,
+                HazardName = "Spore Bloom",
                 Intro =
-                    "Ranch Rocket touchdown: VERDANT MOON.\n\n" +
-                    "The soil hums with Mint Ranch. Drew: \"CJ wasn't the top of the chain — " +
-                    "someone off-world has been farming these variants for years.\"\n\n" +
-                    "Harvest Mint Ranch to refuel the rocket, then launch onward (press J)."
+                    "VERDANT MOON.\n\nThe air is thick with spores that eat at your stamina. " +
+                    "Mint Ranch grows straight out of the rock here.\n\n" +
+                    "Something is waiting by the tree. It is wearing Drew's coat.",
+                DrewLines = new[]
+                {
+                    "You made it. I wasn't sure you would.",
+                    "CJ showed me what we actually are, boss. Farmhands. Livestock that thinks it owns the barn.",
+                    "I'm not going to let you reach him. Not on my moon."
+                }
             },
-            new Planet
+            new World
             {
                 Name = "Ember Reach",
                 RanchType = "Ember Ranch",
-                FuelNeeded = 900f,
+                FuelNeeded = 15000f,
                 SkyColor = new Color(0.25f, 0.06f, 0.03f),
                 RanchColor = new Color(1f, 0.45f, 0.15f),
+                GroundColor = new Color(0.28f, 0.12f, 0.08f),
+                Danger = Hazard.Emberfall,
+                HazardName = "Emberfall",
                 Intro =
-                    "Ranch Rocket touchdown: EMBER REACH.\n\n" +
-                    "Volcanic Ember Ranch burns hotter and fuels harder. You meet a scarred " +
-                    "variant of yourself who fled the Core. \"He rewrites anyone who refuses him.\"\n\n" +
-                    "Refuel with Ember Ranch and press on."
+                    "EMBER REACH.\n\nBurning ash falls without stopping. Ember Ranch runs hot " +
+                    "enough to scorch the bottles.\n\nHe healed. He got here first. Again.",
+                DrewLines = new[]
+                {
+                    "Still coming. I respected that, once.",
+                    "You know what the worst part is? You never asked what I wanted. You just hired me.",
+                    "Burn with the rest of it."
+                }
             },
-            new Planet
+            new World
             {
                 Name = "Frost Halo",
                 RanchType = "Frost Ranch",
-                FuelNeeded = 1800f,
+                FuelNeeded = 40000f,
                 SkyColor = new Color(0.06f, 0.14f, 0.30f),
                 RanchColor = new Color(0.55f, 0.85f, 1f),
+                GroundColor = new Color(0.62f, 0.72f, 0.85f),
+                Danger = Hazard.DeepFreeze,
+                HazardName = "Deep Freeze",
                 Intro =
-                    "Ranch Rocket touchdown: FROST HALO.\n\n" +
-                    "Frost Ranch crystallizes the tank with dense cosmic fuel. Drew goes quiet — " +
-                    "a broadcast from the Core is calling crew home. \"Don't listen to it,\" you tell him.\n\n" +
-                    "Fill the tank and launch."
+                    "FROST HALO.\n\nThe cold sinks into your legs and will not let go. " +
+                    "Frost Ranch crystallises the instant it leaves the tree.\n\n" +
+                    "He is not taunting this time. He just looks tired.",
+                DrewLines = new[]
+                {
+                    "I keep losing and I keep waking up. He rebuilds me every time.",
+                    "Do you understand what that's like? To be a thing that gets rebuilt?",
+                    "Just stop walking toward him. Please. Then I can stop."
+                }
             },
-            new Planet
+            new World
             {
                 Name = "Nebula Bazaar",
                 RanchType = "Prism Ranch",
-                FuelNeeded = 3500f,
+                FuelNeeded = 100000f,
                 SkyColor = new Color(0.18f, 0.05f, 0.28f),
                 RanchColor = new Color(0.95f, 0.45f, 1f),
+                GroundColor = new Color(0.24f, 0.14f, 0.32f),
+                Danger = Hazard.PrismFlux,
+                HazardName = "Prism Flux",
                 Intro =
-                    "Ranch Rocket touchdown: NEBULA BAZAAR.\n\n" +
-                    "Every Ranch variant in the galaxy trades here as Prism Ranch. Drew is gone — " +
-                    "a note reads: \"Cosmic CJ showed me what we really are. Come and see.\"\n\n" +
-                    "Refuel with Prism Ranch. The Core is the last jump."
+                    "NEBULA BAZAAR.\n\nEvery Ranch variant in the galaxy is traded here as " +
+                    "Prism Ranch, and the light splits everything — including its defenders.\n\n" +
+                    "There are several of him now.",
+                DrewLines = new[]
+                {
+                    "Careful. The light here makes copies, and they all agree with me.",
+                    "You built an empire out of a tree and never once looked up from it.",
+                    "The Core is right there. You will not see it."
+                }
             },
-            new Planet
+            new World
             {
                 Name = "The Cosmic Core",
                 RanchType = "Cosmic Ranch",
                 FuelNeeded = 0f,
-                SkyColor = new Color(0.02f, 0.0f, 0.06f),
+                SkyColor = new Color(0.02f, 0f, 0.06f),
                 RanchColor = new Color(1f, 0.92f, 0.55f),
+                GroundColor = new Color(0.10f, 0.08f, 0.16f),
+                Danger = Hazard.CosmicPressure,
+                HazardName = "Cosmic Pressure",
                 IsFinal = true,
                 Intro =
-                    "Ranch Rocket touchdown: THE COSMIC CORE.\n\n" +
-                    "All the Ranch in the galaxy flows to one being. COSMIC CJ, with a converted " +
-                    "Drew at his side, controls it all.\n\n" +
-                    "\"You freed one ranch. I AM the ranch.\" Open the Journey menu (J) and CONFRONT COSMIC CJ."
+                    "THE COSMIC CORE.\n\nEvery strand of Ranch in the galaxy runs here, into one " +
+                    "being. The pressure alone is trying to fold you.\n\n" +
+                    "Drew is standing at his side, and he is not fighting you this time.",
+                DrewLines = new[]
+                {
+                    "I'm done fighting you. Look at it. Look at what he actually is.",
+                    "I was never the nemesis, boss. I was the warning."
+                }
             }
         };
+
+        for (int i = 0; i < worlds.Length; i++)
+            worlds[i].Origin = OriginFor(i);
     }
 
-    /// <summary>Called from RanchGameCore.WinGame the moment CJ is defeated.</summary>
+    // ------------------------------------------------------------- surfaces
+
+    private void EnsureSurface(World world)
+    {
+        if (world == null || world.Surface != null)
+            return;
+
+        GameObject root = new GameObject("World — " + world.Name);
+        root.transform.position = world.Origin;
+        world.Surface = root.transform;
+
+        // Thick, oversized ground. See the class notes: a thin floor plus a low
+        // spawn dropped the player straight through on arrival.
+        Slab(root.transform, "Surface", new Vector3(0f, -1f, 0f),
+            new Vector3(160f, 2f, 160f), world.GroundColor, RanchVisuals.Surface.Matte);
+
+        // A low wall so the player cannot wander off the edge into nothing.
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * 90f * Mathf.Deg2Rad;
+            Vector3 p = new Vector3(Mathf.Sin(a) * 78f, 3f, Mathf.Cos(a) * 78f);
+            Vector3 s = i % 2 == 0
+                ? new Vector3(160f, 8f, 2f)
+                : new Vector3(2f, 8f, 160f);
+            Slab(root.transform, "Boundary " + i, p, s,
+                world.SkyColor * 1.6f, RanchVisuals.Surface.Satin);
+        }
+
+        BuildAlienTree(root.transform, world);
+        BuildRocketPad(root.transform, world);
+
+        root.SetActive(false);
+    }
+
+    // Each world grows its own Ranch, so the player can actually refuel here.
+    // It drives the same RanchTreeSystem as the homestead tree.
+    private void BuildAlienTree(Transform parent, World world)
+    {
+        GameObject tree = new GameObject(world.RanchType + " Tree");
+        tree.transform.SetParent(parent, false);
+        tree.transform.localPosition = new Vector3(0f, 0f, 22f);
+
+        Slab(tree.transform, "Trunk", new Vector3(0f, 3f, 0f), new Vector3(2.2f, 6f, 2.2f),
+            new Color(0.30f, 0.22f, 0.16f), RanchVisuals.Surface.Rough);
+
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * 90f * Mathf.Deg2Rad;
+            GameObject crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            crown.name = "Crown " + i;
+            crown.transform.SetParent(tree.transform, false);
+            crown.transform.localPosition =
+                new Vector3(Mathf.Sin(a) * 2.2f, 7.2f, Mathf.Cos(a) * 2.2f);
+            crown.transform.localScale = Vector3.one * 5.5f;
+            Renderer r = crown.GetComponent<Renderer>();
+            if (r != null)
+                r.sharedMaterial = RanchVisuals.GetMaterial(
+                    world.RanchColor, RanchVisuals.Surface.Emissive);
+        }
+
+        BoxCollider trigger = tree.AddComponent<BoxCollider>();
+        trigger.center = new Vector3(0f, 3f, 0f);
+        trigger.size = new Vector3(6f, 6f, 6f);
+        trigger.isTrigger = true;
+
+        tree.AddComponent<RanchTreeInteractable>().Initialize(core.Tree);
+        Label(tree.transform, new Vector3(0f, 11f, 0f),
+            world.RanchType.ToUpperInvariant() + "\nHold E to extract");
+    }
+
+    private void BuildRocketPad(Transform parent, World world)
+    {
+        GameObject pad = new GameObject("Ranch Rocket");
+        pad.transform.SetParent(parent, false);
+        pad.transform.localPosition = new Vector3(0f, 0f, -22f);
+
+        Slab(pad.transform, "Pad", new Vector3(0f, 0.3f, 0f), new Vector3(12f, 0.6f, 12f),
+            new Color(0.30f, 0.32f, 0.38f), RanchVisuals.Surface.Metal);
+        Slab(pad.transform, "Hull", new Vector3(0f, 5f, 0f), new Vector3(3.4f, 9f, 3.4f),
+            new Color(0.82f, 0.84f, 0.88f), RanchVisuals.Surface.Metal);
+        Slab(pad.transform, "Fin A", new Vector3(2.2f, 1.8f, 0f), new Vector3(1f, 3.4f, 2.6f),
+            new Color(0.85f, 0.30f, 0.22f), RanchVisuals.Surface.Satin);
+        Slab(pad.transform, "Fin B", new Vector3(-2.2f, 1.8f, 0f), new Vector3(1f, 3.4f, 2.6f),
+            new Color(0.85f, 0.30f, 0.22f), RanchVisuals.Surface.Satin);
+        Slab(pad.transform, "Thruster Glow", new Vector3(0f, 0.9f, 0f),
+            new Vector3(2.6f, 0.5f, 2.6f), world.RanchColor, RanchVisuals.Surface.Emissive);
+
+        BoxCollider trigger = pad.AddComponent<BoxCollider>();
+        trigger.center = new Vector3(0f, 3f, 0f);
+        trigger.size = new Vector3(8f, 8f, 8f);
+        trigger.isTrigger = true;
+
+        pad.AddComponent<RanchRocketInteractable>().Initialize(this);
+        Label(pad.transform, new Vector3(0f, 11f, 0f), "RANCH ROCKET\nPress E");
+    }
+
+    // ------------------------------------------------------------- journey
+
     public void BeginJourney()
     {
         if (JourneyUnlocked)
@@ -152,39 +334,261 @@ public class RanchSpaceSystem : MonoBehaviour
         JourneyUnlocked = true;
         PlanetIndex = 0;
         Fuel = 0f;
+        ResetFuelBaseline();
+
+        core.ShowMessage(
+            "COSMIC JOURNEY UNLOCKED — the Ranch Rocket is fuelled and waiting. Press J.",
+            10f
+        );
+
+        TravelTo(0, true);
+    }
+
+    /// <summary>Teleports the player onto a world and makes it the current one.</summary>
+    private void TravelTo(int index, bool announce)
+    {
+        if (worlds == null || core == null || core.Player == null)
+            return;
+
+        index = Mathf.Clamp(index, 0, worlds.Length - 1);
+
+        if (!IsOffWorld)
+        {
+            // Remember the ranch so the player can come home.
+            ranchReturnPosition = core.Player.transform.position;
+        }
+
+        PlanetIndex = index;
+        World world = worlds[index];
+        EnsureSurface(world);
+
+        SetActiveSurface(world);
+        IsOffWorld = true;
+
+        ApplyTheme(world);
+        ResetFuelBaseline();
+
+        // Two units of clearance: arriving flush with the floor let the player
+        // fall through before the new colliders reached the physics scene.
+        core.Player.Teleport(world.Origin + new Vector3(0f, 2f, -14f), 0f);
+
+        DespawnEvilDrew();
+
+        if (announce)
+            core.ShowMessage(world.Intro, 14f);
+
+        if (!world.DrewDefeated)
+            SpawnEvilDrew(world);
+    }
+
+    public void ReturnToRanch()
+    {
+        if (!IsOffWorld || core == null || core.Player == null)
+            return;
+
+        IsOffWorld = false;
+        SetActiveSurface(null);
+        DespawnEvilDrew();
+
+        RanchVisuals.ApplyAtmosphere(
+            new Color(0.42f, 0.66f, 0.92f), new Color(0.20f, 0.17f, 0.12f), 0.9f);
+
+        core.Player.Teleport(ranchReturnPosition, 0f);
+        core.ShowMessage("Back on the ranch. Press J to return to the stars.", 5f);
+    }
+
+    private void SetActiveSurface(World active)
+    {
+        if (worlds == null)
+            return;
+
+        for (int i = 0; i < worlds.Length; i++)
+        {
+            if (worlds[i].Surface != null)
+                worlds[i].Surface.gameObject.SetActive(worlds[i] == active);
+        }
+    }
+
+    private void ApplyTheme(World world)
+    {
+        Camera cam = Camera.main;
+        if (cam != null)
+        {
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = world.SkyColor;
+        }
+
+        RanchVisuals.ApplyAtmosphere(world.SkyColor, world.GroundColor * 0.6f, 0.5f);
+    }
+
+    private void ResetFuelBaseline()
+    {
         lastTotalRanch = core != null && core.Inventory != null
             ? core.Inventory.TotalRanchCollected
             : 0f;
-
-        ApplyPlanetTheme();
-        AnnouncePlanet();
-        core.ShowMessage(
-            "COSMIC JOURNEY UNLOCKED — press J to open the Ranch Rocket console.",
-            10f
-        );
     }
 
-    private void Update()
+    // ------------------------------------------------------------ Evil Drew
+
+    private void SpawnEvilDrew(World world)
     {
-        if (!JourneyUnlocked || core == null)
+        if (evilDrewSpawned || core.Waves == null || core.Player == null || world.IsFinal)
             return;
 
-        if (JourneyCompleted)
+        evilDrewSpawned = true;
+
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        body.name = "Evil Drew — " + world.Name;
+        body.transform.position = world.Origin + new Vector3(0f, 1.5f, 8f);
+        body.transform.localScale = new Vector3(1.9f, 2.1f, 1.9f);
+        body.GetComponent<Renderer>().sharedMaterial =
+            RanchVisuals.GetMaterial(new Color(0.85f, 0.72f, 0.10f), RanchVisuals.Surface.Satin);
+
+        GameObject aura = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        aura.name = "Corruption";
+        aura.transform.SetParent(body.transform, false);
+        aura.transform.localScale = Vector3.one * 1.35f;
+        Collider auraCollider = aura.GetComponent<Collider>();
+        if (auraCollider != null)
+            Destroy(auraCollider);
+        aura.GetComponent<Renderer>().sharedMaterial =
+            RanchVisuals.GetMaterial(world.RanchColor, RanchVisuals.Surface.Emissive);
+
+        RanchEnemy enemy = body.AddComponent<RanchEnemy>();
+        // Scales with how deep into the journey the player is.
+        enemy.Initialize(core, core.Waves, core.Player.transform,
+            4, 90000 + PlanetIndex, 60 + PlanetIndex * 25);
+        core.Waves.RegisterFinalBattleEnemy(enemy);
+        evilDrew = enemy;
+
+        if (core.Dialogue != null && world.DrewLines != null)
+            core.Dialogue.Begin("Evil Drew", world.DrewLines);
+    }
+
+    private void DespawnEvilDrew()
+    {
+        if (evilDrew != null)
+            Destroy(evilDrew.gameObject);
+
+        evilDrew = null;
+        evilDrewSpawned = false;
+    }
+
+    private void UpdateEvilDrew()
+    {
+        World world = Current;
+        if (world == null || world.DrewDefeated || !evilDrewSpawned)
             return;
 
-        // Detect the Cosmic CJ defeat and trigger the true ending.
-        if (cosmicBossSpawned && !CosmicCJDefeated &&
-            (cosmicBoss == null || cosmicBoss.Health <= 0f))
+        // Only a confirmed kill counts. A vanished enemy means it was cleaned
+        // up, not beaten — respawn it rather than handing out the progress.
+        if (evilDrew != null && evilDrew.Health > 0f)
+            return;
+
+        if (evilDrew == null)
         {
-            CosmicCJDefeated = true;
-            JourneyCompleted = true;
-            CloseConsole();
-            core.WinGame();
+            evilDrewSpawned = false;
             return;
         }
 
+        world.DrewDefeated = true;
+        evilDrew = null;
+        evilDrewSpawned = false;
+
+        core.ShowMessage(
+            "Evil Drew falls. The rocket's clamps release — you can leave " +
+            world.Name + " once it is fuelled.",
+            8f
+        );
+        RanchJuiceSystem.Shake(0.3f, 0.5f);
+    }
+
+    // -------------------------------------------------------------- hazards
+
+    private void UpdateHazard()
+    {
+        World world = Current;
+        if (world == null || !IsOffWorld || IsOpen)
+            return;
+
+        if (core.Health == null || core.Health.IsDead || core.Health.IsDowned)
+            return;
+
+        hazardTimer -= Time.deltaTime;
+        if (hazardTimer > 0f)
+            return;
+
+        hazardTimer = 2.5f;
+
+        switch (world.Danger)
+        {
+            case Hazard.SporeBloom:
+                core.Stamina?.Drain(9f);
+                break;
+
+            case Hazard.Emberfall:
+                core.Health.TakeDamage(6f + PlanetIndex * 2f, "Emberfall");
+                break;
+
+            case Hazard.DeepFreeze:
+                core.Player?.ApplySlow(0.55f, 3f);
+                break;
+
+            case Hazard.PrismFlux:
+                // The light makes copies: a steady trickle of reinforcements.
+                if (core.Waves != null && core.Player != null)
+                    core.Waves.SpawnFinalBattleGuard(core.Player.transform.position, PlanetIndex);
+                break;
+
+            case Hazard.CosmicPressure:
+                core.Health.TakeDamage(14f, "Cosmic Pressure");
+                core.Stamina?.Drain(6f);
+                break;
+        }
+    }
+
+    // --------------------------------------------------------------- update
+
+    private void Update()
+    {
+        if (!JourneyUnlocked || core == null || JourneyCompleted)
+            return;
+
+        UpdateCosmicBoss();
+        UpdateEvilDrew();
+        UpdateHazard();
         AccumulateFuel();
         HandleConsoleToggle();
+    }
+
+    private void UpdateCosmicBoss()
+    {
+        if (!cosmicBossSpawned || CosmicCJDefeated)
+            return;
+
+        // Record the kill only while the boss still exists at zero health.
+        if (cosmicBoss != null)
+        {
+            if (cosmicBoss.Health <= 0f)
+                cosmicBossConfirmedDead = true;
+
+            if (!cosmicBossConfirmedDead)
+                return;
+        }
+        else if (!cosmicBossConfirmedDead)
+        {
+            // The boss vanished without dying — cleaned up rather than beaten.
+            // Awarding the win here previously granted the true ending for free
+            // and left the save permanently "finished". Allow another attempt.
+            cosmicBossSpawned = false;
+            core.ShowMessage("Cosmic CJ withdrew into the Core. Confront him again.", 6f);
+            return;
+        }
+
+        CosmicCJDefeated = true;
+        JourneyCompleted = true;
+        CloseConsole();
+        core.WinGame();
     }
 
     private void AccumulateFuel()
@@ -194,7 +598,7 @@ public class RanchSpaceSystem : MonoBehaviour
 
         if (core.Health != null && (core.Health.IsDead || core.Health.IsDowned))
         {
-            lastTotalRanch = core.Inventory.TotalRanchCollected;
+            ResetFuelBaseline();
             return;
         }
 
@@ -206,10 +610,10 @@ public class RanchSpaceSystem : MonoBehaviour
             Fuel += gained;
     }
 
+    // -------------------------------------------------------------- console
+
     private void HandleConsoleToggle()
     {
-        // Closing must always be possible, otherwise the console could trap the
-        // game at timeScale 0. Only OPENING is gated on other menus.
         if (IsOpen)
         {
             if (Input.GetKeyDown(KeyCode.J) || Input.GetKeyDown(KeyCode.Escape))
@@ -227,9 +631,10 @@ public class RanchSpaceSystem : MonoBehaviour
             OpenConsole();
     }
 
-    private void OpenConsole()
+    /// <summary>Opened from the rocket pad as well as the J key.</summary>
+    public void OpenConsole()
     {
-        if (IsOpen)
+        if (IsOpen || core == null)
             return;
 
         IsOpen = true;
@@ -247,40 +652,35 @@ public class RanchSpaceSystem : MonoBehaviour
         IsOpen = false;
         Time.timeScale = previousTimeScale <= 0f ? 1f : previousTimeScale;
 
-        bool incapacitated = core.Health != null &&
-            (core.Health.IsDead || core.Health.IsDowned);
-
-        if (!incapacitated && !JourneyCompleted)
+        bool busy = core.Health != null && (core.Health.IsDead || core.Health.IsDowned);
+        if (!busy && !JourneyCompleted)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
     }
 
-    private Planet Current =>
-        planets != null && PlanetIndex >= 0 && PlanetIndex < planets.Length
-            ? planets[PlanetIndex]
-            : null;
-
     private void Launch()
     {
-        Planet planet = Current;
-        if (planet == null || planet.IsFinal)
+        World world = Current;
+        if (world == null || world.IsFinal)
             return;
 
-        if (Fuel < planet.FuelNeeded)
+        if (!world.DrewDefeated)
         {
-            core.ShowMessage("Not enough " + planet.RanchType + " to fuel the rocket yet.", 4f);
+            core.ShowMessage("Evil Drew is holding the clamps. Defeat him first.", 5f);
             return;
         }
 
-        PlanetIndex = Mathf.Min(PlanetIndex + 1, planets.Length - 1);
-        Fuel = 0f;
-        lastTotalRanch = core.Inventory != null ? core.Inventory.TotalRanchCollected : 0f;
+        if (Fuel < world.FuelNeeded)
+        {
+            core.ShowMessage("Not enough " + world.RanchType + " to fuel the rocket.", 5f);
+            return;
+        }
 
-        ApplyPlanetTheme();
-        AnnouncePlanet();
+        Fuel = 0f;
         CloseConsole();
+        TravelTo(PlanetIndex + 1, true);
     }
 
     private void ConfrontCosmicCJ()
@@ -289,86 +689,46 @@ public class RanchSpaceSystem : MonoBehaviour
             return;
 
         cosmicBossSpawned = true;
+        cosmicBossConfirmedDead = false;
         CloseConsole();
 
         Vector3 spawn = core.Player.transform.position +
-                        core.Player.transform.forward * 9f + Vector3.up * 0.5f;
+                        core.Player.transform.forward * 12f + Vector3.up * 0.5f;
 
         GameObject bossObject = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         bossObject.name = "Cosmic CJ, Warden of All Ranch";
         bossObject.transform.position = spawn;
-        bossObject.transform.localScale = new Vector3(2.4f, 2.6f, 2.4f);
-        bossObject.GetComponent<Renderer>().material =
-            RanchWorldBuilder.CreateRuntimeMaterial(new Color(0.75f, 0.35f, 1f));
+        bossObject.transform.localScale = new Vector3(3f, 3.2f, 3f);
+        bossObject.GetComponent<Renderer>().sharedMaterial =
+            RanchVisuals.GetMaterial(new Color(0.75f, 0.35f, 1f), RanchVisuals.Surface.Satin);
 
         GameObject halo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         halo.name = "Cosmic Aura";
         halo.transform.SetParent(bossObject.transform, false);
-        halo.transform.localScale = new Vector3(1.4f, 1.4f, 1.4f);
+        halo.transform.localScale = Vector3.one * 1.4f;
         Collider haloCollider = halo.GetComponent<Collider>();
         if (haloCollider != null)
             Destroy(haloCollider);
-        halo.GetComponent<Renderer>().material =
-            RanchWorldBuilder.CreateRuntimeMaterial(new Color(1f, 0.92f, 0.55f));
+        halo.GetComponent<Renderer>().sharedMaterial =
+            RanchVisuals.GetMaterial(new Color(1f, 0.92f, 0.55f), RanchVisuals.Surface.Emissive);
 
         RanchEnemy boss = bossObject.AddComponent<RanchEnemy>();
-        boss.Initialize(core, core.Waves, core.Player.transform, 4, 99999, 140,
-            RanchEnemy.EnemyArchetype.Raider);
+        boss.Initialize(core, core.Waves, core.Player.transform, 4, 99999, 200);
         core.Waves.RegisterFinalBattleEnemy(boss);
         cosmicBoss = boss;
 
-        core.ShowMessage(
-            "COSMIC CJ: \"All the Ranch in the galaxy answers to me. Kneel.\"",
-            8f
-        );
-    }
-
-    private void AnnouncePlanet()
-    {
-        Planet planet = Current;
-        if (planet != null)
-            core.ShowMessage(planet.Intro, 12f);
-    }
-
-    private void ApplyPlanetTheme()
-    {
-        Planet planet = Current;
-        if (planet == null)
-            return;
-
-        Camera cam = Camera.main;
-        if (cam != null)
+        if (core.Dialogue != null)
         {
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = planet.SkyColor;
-        }
-
-        // Alien skies get the same fog + gradient ambient treatment as the
-        // homestead, tinted by the planet's own ranch colour so the ground
-        // bounce matches what grows there.
-        RanchVisuals.ApplyAtmosphere(
-            planet.SkyColor,
-            planet.RanchColor * 0.35f,
-            0.55f
-        );
-
-        TintRanchTree(planet.RanchColor);
-    }
-
-    private void TintRanchTree(Color color)
-    {
-        if (core.RanchTreeTransform == null)
-            return;
-
-        Renderer[] renderers =
-            core.RanchTreeTransform.GetComponentsInChildren<Renderer>(true);
-
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            if (renderers[i] != null && renderers[i].name.Contains("Crown"))
-                renderers[i].material = RanchWorldBuilder.CreateRuntimeMaterial(color);
+            core.Dialogue.Begin(
+                "Cosmic CJ",
+                "You walked past four of my moons and a friend to get here.",
+                "All the Ranch in the galaxy runs through me. You are a hand that learned to hold a bottle.",
+                "Kneel, and I will let the ranch keep growing."
+            );
         }
     }
+
+    // ------------------------------------------------------------- restore
 
     public void RestoreState(
         bool journeyUnlocked,
@@ -377,20 +737,38 @@ public class RanchSpaceSystem : MonoBehaviour
         bool cosmicCJDefeated)
     {
         JourneyUnlocked = journeyUnlocked;
-        PlanetIndex = planets != null
-            ? Mathf.Clamp(planetIndex, 0, planets.Length - 1)
-            : 0;
+        PlanetIndex = worlds != null ? Mathf.Clamp(planetIndex, 0, worlds.Length - 1) : 0;
         Fuel = Mathf.Max(0f, fuel);
         CosmicCJDefeated = cosmicCJDefeated;
         JourneyCompleted = cosmicCJDefeated;
 
-        lastTotalRanch = core != null && core.Inventory != null
-            ? core.Inventory.TotalRanchCollected
-            : 0f;
-
-        if (JourneyUnlocked && !JourneyCompleted)
-            ApplyPlanetTheme();
+        // Loading always puts the player on the ranch, never mid-world. The
+        // surfaces are rebuilt on demand when they next travel.
+        IsOffWorld = false;
+        SetActiveSurface(null);
+        DespawnEvilDrew();
+        ResetFuelBaseline();
     }
+
+    /// <summary>Worlds whose nemesis is already beaten, for saving.</summary>
+    public bool[] GetDrewProgressCopy()
+    {
+        bool[] copy = new bool[worlds != null ? worlds.Length : 5];
+        for (int i = 0; worlds != null && i < worlds.Length; i++)
+            copy[i] = worlds[i].DrewDefeated;
+        return copy;
+    }
+
+    public void RestoreDrewProgress(bool[] progress)
+    {
+        if (worlds == null || progress == null)
+            return;
+
+        for (int i = 0; i < worlds.Length && i < progress.Length; i++)
+            worlds[i].DrewDefeated = progress[i];
+    }
+
+    // ---------------------------------------------------------------- draw
 
     private void OnGUI()
     {
@@ -401,25 +779,37 @@ public class RanchSpaceSystem : MonoBehaviour
 
         if (!IsOpen)
         {
-            DrawHudHint();
+            DrawHud();
             return;
         }
 
         DrawConsole();
     }
 
-    private void DrawHudHint()
+    private void DrawHud()
     {
-        Planet planet = Current;
-        if (planet == null)
+        World world = Current;
+        if (world == null || core.IsAnyMenuOpen)
             return;
 
-        string line = planet.IsFinal
-            ? "COSMIC JOURNEY — " + planet.Name + "  |  Press J: CONFRONT COSMIC CJ"
-            : "COSMIC JOURNEY — " + planet.Name + "  |  " + planet.RanchType + " fuel " +
-              Mathf.FloorToInt(Fuel) + " / " + Mathf.CeilToInt(planet.FuelNeeded) + "  |  Press J";
+        string line;
+        if (!IsOffWorld)
+        {
+            line = "RANCH HOMESTEAD  |  Press J for the Ranch Rocket";
+        }
+        else if (world.IsFinal)
+        {
+            line = world.Name + "  |  " + world.HazardName + "  |  Press J: CONFRONT COSMIC CJ";
+        }
+        else
+        {
+            line =
+                world.Name + "  |  " + world.HazardName + "  |  " +
+                (world.DrewDefeated ? "" : "EVIL DREW ALIVE  |  ") +
+                Mathf.FloorToInt(Fuel) + " / " + Mathf.CeilToInt(world.FuelNeeded) + " fuel";
+        }
 
-        float width = 620f;
+        float width = 720f;
         Rect rect = new Rect((Screen.width - width) * 0.5f, Screen.height - 44f, width, 32f);
         GUI.Box(rect, GUIContent.none, panelStyle);
         GUI.Label(rect, line, hudStyle);
@@ -427,77 +817,123 @@ public class RanchSpaceSystem : MonoBehaviour
 
     private void DrawConsole()
     {
-        Planet planet = Current;
-        if (planet == null)
+        World world = Current;
+        if (world == null)
             return;
 
-        float w = 720f;
-        float h = 520f;
+        float w = 760f;
+        float h = 560f;
         Rect panel = new Rect((Screen.width - w) * 0.5f, (Screen.height - h) * 0.5f, w, h);
         GUI.Box(panel, GUIContent.none, panelStyle);
-
-        GUI.Label(new Rect(panel.x + 30f, panel.y + 24f, w - 60f, 44f),
+        GUI.Label(new Rect(panel.x + 30f, panel.y + 22f, w - 60f, 44f),
             "RANCH ROCKET CONSOLE", titleStyle);
 
         string status =
-            "Current planet: " + planet.Name + "\n" +
-            "Ranch discovered here: " + planet.RanchType + "\n\n";
+            "World: " + world.Name + "\n" +
+            "Ranch: " + world.RanchType + "\n" +
+            "Hazard: " + world.HazardName + "\n\n";
 
-        if (planet.IsFinal)
+        if (world.IsFinal)
         {
-            status +=
-                "This is the Cosmic Core — the end of the journey.\n" +
-                "All the galaxy's Ranch flows through Cosmic CJ.\n\n" +
-                "Confront him to free every ranch and reach the true ending.";
+            status += "The end of the journey. Cosmic CJ holds every strand of Ranch " +
+                      "in the galaxy.\n\nDefeat him to free all of it.";
         }
         else
         {
-            float pct = planet.FuelNeeded > 0f
-                ? Mathf.Clamp01(Fuel / planet.FuelNeeded) * 100f
-                : 100f;
             status +=
-                planet.RanchType + " fuel: " + Mathf.FloorToInt(Fuel) + " / " +
-                Mathf.CeilToInt(planet.FuelNeeded) + "   (" + pct.ToString("F0") + "%)\n\n" +
-                "Harvest, bottle, and automate Ranch on this planet to refine rocket " +
-                "fuel. When the tank is full, launch to the next world.\n\n" +
-                "Next: " + (PlanetIndex + 1 < planets.Length ? planets[PlanetIndex + 1].Name : "—");
+                "Nemesis: " + (world.DrewDefeated ? "Evil Drew defeated" : "EVIL DREW STILL STANDING") + "\n" +
+                "Fuel: " + Mathf.FloorToInt(Fuel) + " / " + Mathf.CeilToInt(world.FuelNeeded) + "\n\n" +
+                "Harvest this world's Ranch Tree to refine fuel. The rocket will not " +
+                "launch while Evil Drew holds the clamps.\n\n" +
+                "Next: " + (PlanetIndex + 1 < worlds.Length ? worlds[PlanetIndex + 1].Name : "—");
         }
 
-        GUI.Label(new Rect(panel.x + 30f, panel.y + 80f, w - 60f, h - 190f), status, bodyStyle);
+        GUI.Label(new Rect(panel.x + 30f, panel.y + 78f, w - 60f, h - 230f), status, bodyStyle);
 
-        Rect actionRect = new Rect(panel.x + 60f, panel.y + h - 96f, w - 120f, 56f);
-        if (planet.IsFinal)
+        float by = panel.y + h - 150f;
+
+        if (world.IsFinal)
         {
-            if (GUI.Button(actionRect,
-                cosmicBossSpawned ? "COSMIC CJ IS ON THE FIELD — DEFEAT HIM" : "CONFRONT COSMIC CJ",
-                buttonStyle))
+            if (GUI.Button(new Rect(panel.x + 60f, by, w - 120f, 52f),
+                cosmicBossSpawned ? "COSMIC CJ IS ON THE FIELD" : "CONFRONT COSMIC CJ", buttonStyle))
             {
                 if (!cosmicBossSpawned)
                 {
                     ConfrontCosmicCJ();
                     GUIUtility.ExitGUI();
+                    return;
                 }
             }
         }
         else
         {
-            bool ready = Fuel >= planet.FuelNeeded;
+            bool ready = world.DrewDefeated && Fuel >= world.FuelNeeded;
             bool old = GUI.enabled;
             GUI.enabled = ready;
-            if (GUI.Button(actionRect,
+            if (GUI.Button(new Rect(panel.x + 60f, by, w - 120f, 52f),
                 ready
-                    ? "LAUNCH TO " + planets[Mathf.Min(PlanetIndex + 1, planets.Length - 1)].Name.ToUpperInvariant()
-                    : "TANK NOT FULL — KEEP HARVESTING " + planet.RanchType.ToUpperInvariant(),
+                    ? "LAUNCH TO " + worlds[PlanetIndex + 1].Name.ToUpperInvariant()
+                    : (world.DrewDefeated ? "TANK NOT FULL" : "EVIL DREW BLOCKS THE LAUNCH"),
                 buttonStyle))
             {
                 Launch();
                 GUIUtility.ExitGUI();
+                return;
             }
             GUI.enabled = old;
         }
 
-        GUI.Label(new Rect(panel.x + 30f, panel.y + h - 32f, w - 60f, 24f),
-            "Press J or Esc to close the console.", hudStyle);
+        if (GUI.Button(new Rect(panel.x + 60f, by + 62f, w - 120f, 44f),
+            IsOffWorld ? "RETURN TO THE RANCH" : "TRAVEL TO " + world.Name.ToUpperInvariant(),
+            buttonStyle))
+        {
+            if (IsOffWorld)
+                ReturnToRanch();
+            else
+                TravelTo(PlanetIndex, false);
+
+            CloseConsole();
+            GUIUtility.ExitGUI();
+            return;
+        }
+
+        GUI.Label(new Rect(panel.x + 30f, panel.y + h - 34f, w - 60f, 24f),
+            "J or Esc to close.", hudStyle);
+    }
+
+    // --------------------------------------------------------------- helpers
+
+    private static GameObject Slab(
+        Transform parent, string name, Vector3 localPosition,
+        Vector3 scale, Color color, RanchVisuals.Surface surface)
+    {
+        GameObject piece = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        piece.name = name;
+        piece.transform.SetParent(parent, false);
+        piece.transform.localPosition = localPosition;
+        piece.transform.localScale = scale;
+
+        Renderer renderer = piece.GetComponent<Renderer>();
+        if (renderer != null)
+            renderer.sharedMaterial = RanchVisuals.GetMaterial(color, surface);
+
+        return piece;
+    }
+
+    private static void Label(Transform parent, Vector3 localPosition, string text)
+    {
+        GameObject labelObject = new GameObject("Label");
+        labelObject.transform.SetParent(parent, false);
+        labelObject.transform.localPosition = localPosition;
+
+        TextMesh label = labelObject.AddComponent<TextMesh>();
+        label.text = text;
+        label.fontSize = 48;
+        label.characterSize = 0.1f;
+        label.anchor = TextAnchor.MiddleCenter;
+        label.alignment = TextAlignment.Center;
+        label.color = Color.white;
+        labelObject.AddComponent<RanchBillboard>();
     }
 
     private void EnsureStyles()
@@ -508,8 +944,6 @@ public class RanchSpaceSystem : MonoBehaviour
         const int radius = 14;
         RectOffset border = RanchVisuals.PanelBorder(radius);
 
-        // Deep-space violet, to distinguish the rocket console from the
-        // homestead's blue-grey panels.
         panelTexture = RanchVisuals.CreatePanelTexture(
             new Color(0.10f, 0.07f, 0.20f, 0.97f),
             new Color(0.03f, 0.02f, 0.07f, 0.98f),
@@ -531,7 +965,6 @@ public class RanchSpaceSystem : MonoBehaviour
             alignment = TextAnchor.MiddleCenter
         };
         titleStyle.normal.textColor = new Color(0.85f, 0.80f, 1f);
-        // "RANCH ROCKET CONSOLE" banner.
         RanchVisuals.UseDisplayFont(titleStyle);
 
         bodyStyle = new GUIStyle(GUI.skin.label)
@@ -564,13 +997,5 @@ public class RanchSpaceSystem : MonoBehaviour
         hudStyle.normal.textColor = new Color(0.85f, 0.82f, 1f);
 
         stylesReady = true;
-    }
-
-    private static Texture2D MakeTexture(Color color)
-    {
-        Texture2D texture = new Texture2D(1, 1);
-        texture.SetPixel(0, 0, color);
-        texture.Apply();
-        return texture;
     }
 }

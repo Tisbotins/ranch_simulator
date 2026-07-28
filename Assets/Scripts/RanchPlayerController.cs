@@ -499,6 +499,11 @@ public class RanchPlayerController : MonoBehaviour
         if (core != null && core.Facility != null && core.Facility.IsInside)
             return;
 
+        // Same reasoning for Cosmic Journey worlds: they are deactivated when
+        // the player leaves, so a bookmark there becomes empty space.
+        if (core != null && core.Space != null && core.Space.IsOffWorld)
+            return;
+
         safeSampleTimer -= Time.deltaTime;
         if (safeSampleTimer > 0f)
             return;
@@ -534,10 +539,15 @@ public class RanchPlayerController : MonoBehaviour
 
     // The generated world spans roughly x -45..180 and z -45..45. Anything well
     // outside that is not a place the player can stand.
-    private static bool IsInsideWorldBounds(Vector3 position)
+    private bool IsInsideWorldBounds(Vector3 position)
     {
         // z reaches 140 to cover the CJ arena at (150, 0, 110), which is a
         // legitimate place to stand even though it sits outside the ranch.
+        // Cosmic Journey worlds live from x = 2000 outward and are legitimate
+        // ground while the player is on them.
+        if (core != null && core.Space != null && core.Space.IsOffWorld)
+            return position.y > -5f;
+
         return position.x > -60f && position.x < 200f &&
                position.z > -60f && position.z < 140f &&
                position.y > -5f && position.y < 100f;

@@ -68,6 +68,9 @@ public class RanchSaveData
 
     // Whether Giada has introduced herself, so she does not do it every reload.
     public bool metGiada;
+
+    // Which Cosmic Journey worlds have had Evil Drew defeated.
+    public bool[] evilDrewDefeated = new bool[5];
 }
 
 public class RanchSaveSystem : MonoBehaviour
@@ -524,6 +527,9 @@ public class RanchSaveSystem : MonoBehaviour
             data.metGiada = core.Facility.HasMetGiada;
 
         if (core.Space != null)
+            data.evilDrewDefeated = core.Space.GetDrewProgressCopy();
+
+        if (core.Space != null)
         {
             data.spaceJourneyUnlocked = core.Space.JourneyUnlocked;
             data.spacePlanetIndex = core.Space.PlanetIndex;
@@ -698,6 +704,9 @@ public class RanchSaveSystem : MonoBehaviour
                 data.cosmicCJDefeated
             );
         }
+
+        if (core.Space != null)
+            core.Space.RestoreDrewProgress(data.evilDrewDefeated);
 
         // Must run AFTER RestoreState: that call assigns JourneyUnlocked
         // straight from the file, so recovering earlier would be silently
