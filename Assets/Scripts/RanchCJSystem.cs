@@ -42,6 +42,9 @@ public class RanchCJSystem : MonoBehaviour
     private float labelRefreshTimer;
     private bool gateReadyAnnounced;
     private Coroutine battleRoutine;
+    private Vector3 preBattlePosition;
+    private float preBattleRotationY;
+    private bool hasPreBattlePosition;
 
     public void Initialize(RanchGameCore gameCore)
     {
@@ -303,6 +306,13 @@ public class RanchCJSystem : MonoBehaviour
 
         core.Save.SaveGame(false);
         core.Waves.PrepareForFinalBattle();
+
+        // Remember where they came from. The arena is a sealed box far outside
+        // the main world, so once CJ dies there is no way to walk back.
+        preBattlePosition = core.Player.transform.position;
+        preBattleRotationY = core.Player.transform.eulerAngles.y;
+        hasPreBattlePosition = true;
+
         core.Player.Teleport(playerStart.position, playerStart.eulerAngles.y);
         core.Health.Heal(core.Health.MaxHealth);
         core.Stamina.RestoreFull();
@@ -461,8 +471,37 @@ public class RanchCJSystem : MonoBehaviour
         core.Progression.AddExperience(1500f, "Defeated CJ");
         core.ShowMessage("CJ: Impossible... you became the Ultimate Ranchenator.", 5f);
         yield return new WaitForSeconds(2.5f);
+
+        ReturnFromArena();
         core.WinGame();
         battleRoutine = null;
+    }
+
+    /// <summary>
+    /// Puts the player back on the ranch after the final battle. Beating CJ used
+    /// to end the game, so being left inside the sealed arena did not matter.
+    /// It continues into the Cosmic Journey now, so staying there is a soft lock.
+    /// </summary>
+    private void ReturnFromArena()
+    {
+        if (core == null || core.Player == null)
+            return;
+
+        // Prefer exactly where they were standing; otherwise put them at the CJ
+        // Gate, which is where they walked in from.
+        Vector3 destination = hasPreBattlePosition
+            ? preBattlePosition
+            : new Vector3(160f, 1.1f, 18f);
+
+        float rotation = hasPreBattlePosition ? preBattleRotationY : 180f;
+
+        core.Player.Teleport(destination, rotation);
+        hasPreBattlePosition = false;
+
+        core.ShowMessage(
+            "The arena empties. You are back on the ranch.",
+            5f
+        );
     }
 
     public void RestoreState(bool hasWarned, bool ignoredOldBattleUnlocked, int milestoneIndex)

@@ -536,8 +536,10 @@ public class RanchPlayerController : MonoBehaviour
     // outside that is not a place the player can stand.
     private static bool IsInsideWorldBounds(Vector3 position)
     {
+        // z reaches 140 to cover the CJ arena at (150, 0, 110), which is a
+        // legitimate place to stand even though it sits outside the ranch.
         return position.x > -60f && position.x < 200f &&
-               position.z > -60f && position.z < 60f &&
+               position.z > -60f && position.z < 140f &&
                position.y > -5f && position.y < 100f;
     }
 
