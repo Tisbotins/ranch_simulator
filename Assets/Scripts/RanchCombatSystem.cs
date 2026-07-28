@@ -117,7 +117,8 @@ public class RanchCombatSystem : MonoBehaviour
             core.Equipment.WeaponDamageMultiplier *
             comboMultipliers[comboStep - 1] *
             core.Progression.DamageMultiplier *
-            (core.Momentum != null ? core.Momentum.DamageMultiplier : 1f);
+            (core.Momentum != null ? core.Momentum.DamageMultiplier : 1f) *
+            (core.Space != null ? core.Space.CosmicDamageMultiplier : 1f);
 
         bool critical = Random.value < core.Progression.CriticalChance;
         if (critical)
@@ -188,7 +189,8 @@ public class RanchCombatSystem : MonoBehaviour
             core.Equipment.WeaponDamageMultiplier *
             weaponMultiplier *
             core.Progression.DamageMultiplier *
-            (core.Momentum != null ? core.Momentum.DamageMultiplier : 1f);
+            (core.Momentum != null ? core.Momentum.DamageMultiplier : 1f) *
+            (core.Space != null ? core.Space.CosmicDamageMultiplier : 1f);
 
         bool critical = Random.value < core.Progression.CriticalChance * 0.65f;
         if (critical)
@@ -228,7 +230,8 @@ public class RanchCombatSystem : MonoBehaviour
             core.Equipment.WeaponDamageMultiplier *
             multiplier *
             core.Progression.DamageMultiplier *
-            (core.Momentum != null ? core.Momentum.DamageMultiplier : 1f);
+            (core.Momentum != null ? core.Momentum.DamageMultiplier : 1f) *
+            (core.Space != null ? core.Space.CosmicDamageMultiplier : 1f);
 
         bool critical = Random.value < core.Progression.CriticalChance * (heavy ? 0.75f : 1f);
         if (critical)

@@ -150,6 +150,8 @@ public class RanchPlayerController : MonoBehaviour
         yVelocity += -Gravity * Time.deltaTime;
 
         float movementMultiplier = core.Combat.MovementMultiplier * slowMultiplier;
+        if (core.Space != null)
+            movementMultiplier *= core.Space.CosmicSpeedMultiplier;
         if (isCrawling)
             movementMultiplier *= CrawlSpeedMultiplier;
 

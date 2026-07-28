@@ -71,6 +71,12 @@ public class RanchSaveData
 
     // Which Cosmic Journey worlds have had Evil Drew defeated.
     public bool[] evilDrewDefeated = new bool[5];
+
+    // Cosmic upgrade track, the endgame progression.
+    public int cosmicHull;
+    public int cosmicForge;
+    public int cosmicHarvester;
+    public int cosmicThruster;
 }
 
 public class RanchSaveSystem : MonoBehaviour
@@ -527,7 +533,13 @@ public class RanchSaveSystem : MonoBehaviour
             data.metGiada = core.Facility.HasMetGiada;
 
         if (core.Space != null)
+        {
             data.evilDrewDefeated = core.Space.GetDrewProgressCopy();
+            data.cosmicHull = core.Space.HullTier;
+            data.cosmicForge = core.Space.ForgeTier;
+            data.cosmicHarvester = core.Space.HarvesterTier;
+            data.cosmicThruster = core.Space.ThrusterTier;
+        }
 
         if (core.Space != null)
         {
@@ -706,7 +718,11 @@ public class RanchSaveSystem : MonoBehaviour
         }
 
         if (core.Space != null)
+        {
             core.Space.RestoreDrewProgress(data.evilDrewDefeated);
+            core.Space.RestoreCosmicTiers(data.cosmicHull, data.cosmicForge,
+                data.cosmicHarvester, data.cosmicThruster);
+        }
 
         // Must run AFTER RestoreState: that call assigns JourneyUnlocked
         // straight from the file, so recovering earlier would be silently

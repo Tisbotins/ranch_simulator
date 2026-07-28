@@ -10,7 +10,8 @@ public class RanchHealthSystem : MonoBehaviour
     private readonly float[] regenCosts = { 300f, 800f, 1800f, 4000f, 8500f, 17000f };
 
     public float CurrentHealth { get; private set; }
-    public float MaxHealth => healthValues[HealthLevel];
+    public float MaxHealth => healthValues[HealthLevel] +
+        (core != null && core.Space != null ? core.Space.CosmicHealthBonus : 0f);
     public float ArmorPercent => armorValues[ArmorLevel] * 100f;
     public float RegenerationPerSecond => regenValues[RegenerationLevel];
     public int HealthLevel { get; private set; }

@@ -53,6 +53,11 @@ public class RanchSpaceSystem : MonoBehaviour
         public Transform Surface;
         public Vector3 Origin;
         public bool DrewDefeated;
+
+        /// <summary>How much richer this world's Ranch is than the homestead.</summary>
+        public float YieldMultiplier;
+        /// <summary>Enemy strength and spawn pressure scale for this world.</summary>
+        public float ThreatScale;
     }
 
     // Worlds sit far apart on +X so nothing overlaps the ranch or each other.
@@ -70,6 +75,35 @@ public class RanchSpaceSystem : MonoBehaviour
 
     /// <summary>True while the player is standing on an off-world surface.</summary>
     public bool IsOffWorld { get; private set; }
+
+    /// <summary>
+    /// Extraction bonus for the world the player is standing on. The homestead
+    /// tree never stops being available, so an off-world tree has to pay enough
+    /// to justify the hazard, the mobs, and the trip.
+    /// </summary>
+    public float WorldExtractionMultiplier =>
+        IsOffWorld && Current != null ? Current.YieldMultiplier : 1f;
+
+    // ---- Cosmic upgrades: progression for an already-maxed player ---------
+
+    public const int MaxCosmicTier = 8;
+
+    public int HullTier { get; private set; }
+    public int ForgeTier { get; private set; }
+    public int HarvesterTier { get; private set; }
+    public int ThrusterTier { get; private set; }
+
+    /// <summary>Flat max-health added on top of the normal health track.</summary>
+    public float CosmicHealthBonus => HullTier * 260f;
+    public float CosmicDamageMultiplier => 1f + ForgeTier * 0.55f;
+    public float CosmicExtractionMultiplier => 1f + HarvesterTier * 0.9f;
+    public float CosmicSpeedMultiplier => 1f + ThrusterTier * 0.11f;
+
+    /// <summary>Steep: the player arrives with millions and nothing to buy.</summary>
+    public float GetCosmicCost(int tier)
+    {
+        return 250000f * Mathf.Pow(2.35f, tier);
+    }
 
     public string CurrentPlanetName => Current != null ? Current.Name : "Ranch Homestead";
     public string CurrentRanchType => Current != null ? Current.RanchType : "Creamy Ranch";
@@ -121,6 +155,8 @@ public class RanchSpaceSystem : MonoBehaviour
             new World
             {
                 Name = "Verdant Moon",
+                YieldMultiplier = 6f,
+                ThreatScale = 1.6f,
                 RanchType = "Mint Ranch",
                 FuelNeeded = 5000f,
                 SkyColor = new Color(0.05f, 0.20f, 0.18f),
@@ -142,6 +178,8 @@ public class RanchSpaceSystem : MonoBehaviour
             new World
             {
                 Name = "Ember Reach",
+                YieldMultiplier = 20f,
+                ThreatScale = 2.6f,
                 RanchType = "Ember Ranch",
                 FuelNeeded = 15000f,
                 SkyColor = new Color(0.25f, 0.06f, 0.03f),
@@ -162,6 +200,8 @@ public class RanchSpaceSystem : MonoBehaviour
             new World
             {
                 Name = "Frost Halo",
+                YieldMultiplier = 70f,
+                ThreatScale = 4f,
                 RanchType = "Frost Ranch",
                 FuelNeeded = 40000f,
                 SkyColor = new Color(0.06f, 0.14f, 0.30f),
@@ -183,6 +223,8 @@ public class RanchSpaceSystem : MonoBehaviour
             new World
             {
                 Name = "Nebula Bazaar",
+                YieldMultiplier = 240f,
+                ThreatScale = 6f,
                 RanchType = "Prism Ranch",
                 FuelNeeded = 100000f,
                 SkyColor = new Color(0.18f, 0.05f, 0.28f),
@@ -204,6 +246,8 @@ public class RanchSpaceSystem : MonoBehaviour
             new World
             {
                 Name = "The Cosmic Core",
+                YieldMultiplier = 800f,
+                ThreatScale = 9f,
                 RanchType = "Cosmic Ranch",
                 FuelNeeded = 0f,
                 SkyColor = new Color(0.02f, 0f, 0.06f),
@@ -533,6 +577,35 @@ public class RanchSpaceSystem : MonoBehaviour
             : 0f;
     }
 
+    private void BuyCosmic(string label, int tier, System.Action grant)
+    {
+        if (tier >= MaxCosmicTier)
+        {
+            core.ShowMessage(label + " is already at maximum.", 4f);
+            return;
+        }
+
+        float cost = GetCosmicCost(tier);
+        if (core.Inventory == null || !core.Inventory.TrySpendMoney(cost))
+        {
+            core.ShowMessage("Need $" + cost.ToString("F0") + " for " + label + ".", 5f);
+            return;
+        }
+
+        grant();
+        core.Save?.RequestSave();
+        core.ShowMessage(label + " upgraded to tier " + (tier + 1) + ".", 5f);
+        RanchJuiceSystem.Shake(0.1f, 0.25f);
+    }
+
+    public void RestoreCosmicTiers(int hull, int forge, int harvester, int thruster)
+    {
+        HullTier = Mathf.Clamp(hull, 0, MaxCosmicTier);
+        ForgeTier = Mathf.Clamp(forge, 0, MaxCosmicTier);
+        HarvesterTier = Mathf.Clamp(harvester, 0, MaxCosmicTier);
+        ThrusterTier = Mathf.Clamp(thruster, 0, MaxCosmicTier);
+    }
+
     // ------------------------------------------------------------ Evil Drew
 
     private void SpawnEvilDrew(World world)
@@ -623,20 +696,21 @@ public class RanchSpaceSystem : MonoBehaviour
         if (hazardTimer > 0f)
             return;
 
-        hazardTimer = 2.5f;
+        hazardTimer = 1.6f;
 
         switch (world.Danger)
         {
             case Hazard.SporeBloom:
-                core.Stamina?.Drain(9f);
+                core.Stamina?.Drain(16f);
                 break;
 
             case Hazard.Emberfall:
-                core.Health.TakeDamage(6f + PlanetIndex * 2f, "Emberfall");
+                core.Health.TakeDamage(18f + PlanetIndex * 6f, "Emberfall");
                 break;
 
             case Hazard.DeepFreeze:
-                core.Player?.ApplySlow(0.55f, 3f);
+                core.Player?.ApplySlow(0.4f, 3f);
+                core.Stamina?.Drain(10f);
                 break;
 
             case Hazard.PrismFlux:
@@ -646,8 +720,8 @@ public class RanchSpaceSystem : MonoBehaviour
                 break;
 
             case Hazard.CosmicPressure:
-                core.Health.TakeDamage(14f, "Cosmic Pressure");
-                core.Stamina?.Drain(6f);
+                core.Health.TakeDamage(38f, "Cosmic Pressure");
+                core.Stamina?.Drain(14f);
                 break;
         }
     }
@@ -672,12 +746,20 @@ public class RanchSpaceSystem : MonoBehaviour
         if (ambientTimer > 0f)
             return;
 
-        ambientTimer = Mathf.Max(6f, 16f - PlanetIndex * 2f);
+        World world = Current;
+        float threat = world != null ? world.ThreatScale : 1f;
 
-        if (core.Waves.ActiveEnemies.Count >= 4 + PlanetIndex)
+        // Constant pressure. These are endgame worlds — parking at the tree
+        // and holding E should never be safe.
+        ambientTimer = Mathf.Max(0.9f, 3.4f - PlanetIndex * 0.5f);
+
+        int cap = Mathf.RoundToInt(10f + threat * 4f);
+        if (core.Waves.ActiveEnemies.Count >= cap)
             return;
 
-        core.Waves.SpawnFinalBattleGuard(core.Player.transform.position, PlanetIndex);
+        int burst = 1 + Mathf.FloorToInt(threat * 0.5f);
+        for (int i = 0; i < burst; i++)
+            core.Waves.SpawnFinalBattleGuard(core.Player.transform.position, PlanetIndex + i);
     }
 
     // --------------------------------------------------------------- update
@@ -956,7 +1038,7 @@ public class RanchSpaceSystem : MonoBehaviour
             return;
 
         float w = 760f;
-        float h = 560f;
+        float h = 700f;
         Rect panel = new Rect((Screen.width - w) * 0.5f, (Screen.height - h) * 0.5f, w, h);
         GUI.Box(panel, GUIContent.none, panelStyle);
         GUI.Label(new Rect(panel.x + 30f, panel.y + 22f, w - 60f, 44f),
@@ -982,7 +1064,9 @@ public class RanchSpaceSystem : MonoBehaviour
                 "Next: " + (PlanetIndex + 1 < worlds.Length ? worlds[PlanetIndex + 1].Name : "—");
         }
 
-        GUI.Label(new Rect(panel.x + 30f, panel.y + 78f, w - 60f, h - 230f), status, bodyStyle);
+        GUI.Label(new Rect(panel.x + 30f, panel.y + 78f, w - 60f, h - 320f), status, bodyStyle);
+
+        DrawCosmicUpgrades(panel, w);
 
         float by = panel.y + h - 150f;
 
@@ -1033,6 +1117,58 @@ public class RanchSpaceSystem : MonoBehaviour
 
         GUI.Label(new Rect(panel.x + 30f, panel.y + h - 34f, w - 60f, 24f),
             "J or Esc to close.", hudStyle);
+    }
+
+    /// <summary>
+    /// The endgame upgrade track. By the time a player reaches the journey the
+    /// shop is maxed and money has nowhere to go, so this is where it goes.
+    /// </summary>
+    private void DrawCosmicUpgrades(Rect panel, float w)
+    {
+        float y = panel.y + panel.height - 300f;
+        float bw = (w - 90f) * 0.5f;
+
+        GUI.Label(new Rect(panel.x + 30f, y - 26f, w - 60f, 24f),
+            "COSMIC UPGRADES     Money: $" +
+            (core.Inventory != null ? core.Inventory.Money.ToString("F0") : "0"),
+            hudStyle);
+
+        DrawUpgradeButton(new Rect(panel.x + 30f, y, bw, 40f),
+            "Cosmic Hull", HullTier, "+260 max HP",
+            () => BuyCosmic("Cosmic Hull", HullTier, () => HullTier++));
+
+        DrawUpgradeButton(new Rect(panel.x + 60f + bw, y, bw, 40f),
+            "Star Forge", ForgeTier, "+55% damage",
+            () => BuyCosmic("Star Forge", ForgeTier, () => ForgeTier++));
+
+        DrawUpgradeButton(new Rect(panel.x + 30f, y + 46f, bw, 40f),
+            "Quantum Harvester", HarvesterTier, "+90% extraction",
+            () => BuyCosmic("Quantum Harvester", HarvesterTier, () => HarvesterTier++));
+
+        DrawUpgradeButton(new Rect(panel.x + 60f + bw, y + 46f, bw, 40f),
+            "Void Thrusters", ThrusterTier, "+11% speed",
+            () => BuyCosmic("Void Thrusters", ThrusterTier, () => ThrusterTier++));
+    }
+
+    private void DrawUpgradeButton(
+        Rect rect, string label, int tier, string effect, System.Action onBuy)
+    {
+        bool maxed = tier >= MaxCosmicTier;
+        string text = maxed
+            ? label + "  MAX"
+            : label + "  " + tier + "/" + MaxCosmicTier +
+              "  —  $" + GetCosmicCost(tier).ToString("F0") + "   (" + effect + ")";
+
+        bool old = GUI.enabled;
+        GUI.enabled = !maxed;
+        if (GUI.Button(rect, text, buttonStyle))
+        {
+            onBuy();
+            GUI.enabled = old;
+            GUIUtility.ExitGUI();
+            return;
+        }
+        GUI.enabled = old;
     }
 
     // --------------------------------------------------------------- helpers

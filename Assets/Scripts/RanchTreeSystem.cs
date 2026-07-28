@@ -39,7 +39,13 @@ public class RanchTreeSystem : MonoBehaviour
         float stageBonus = 1f + Stage * 0.18f;
         float amount = BaseRanchPerSecond * core.Upgrades.ExtractionMultiplier *
                        core.Shop.ExtractionResearchMultiplier * core.Progression.ProductionMultiplier *
-                       momentumMultiplier * stageBonus * deltaTime;
+                       momentumMultiplier * stageBonus *
+                       // Off-world trees pay far more, and the Quantum
+                       // Harvester multiplies everything.
+                       (core.Space != null
+                           ? core.Space.WorldExtractionMultiplier *
+                             core.Space.CosmicExtractionMultiplier
+                           : 1f) * deltaTime;
 
         core.Inventory.AddRawRanch(amount);
         LifetimeRanchExtracted += amount;
