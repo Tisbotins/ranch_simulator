@@ -493,6 +493,12 @@ public class RanchPlayerController : MonoBehaviour
         if (!controller.isGrounded || dodgeTime > 0f)
             return;
 
+        // Never bookmark a spot inside the laboratory interior. That room is
+        // deactivated on exit, so recovering to it later drops the player into
+        // empty space — and recovery would then keep sending them back there.
+        if (core != null && core.Facility != null && core.Facility.IsInside)
+            return;
+
         safeSampleTimer -= Time.deltaTime;
         if (safeSampleTimer > 0f)
             return;
@@ -504,9 +510,35 @@ public class RanchPlayerController : MonoBehaviour
 
     public void ReturnToSafePosition()
     {
-        Teleport(lastSafePosition, lastSafeRotation);
+        // A bookmark can still be unusable — saved mid-fall, left over from the
+        // laboratory interior, or loaded from a save written while falling. If
+        // it is outside the playable world, recovering to it just drops the
+        // player again, which is an inescapable loop. Fall back to spawn.
+        Vector3 target = IsInsideWorldBounds(lastSafePosition)
+            ? lastSafePosition
+            : WorldSpawn;
+
+        float rotation = IsInsideWorldBounds(lastSafePosition)
+            ? lastSafeRotation
+            : 0f;
+
+        Teleport(target, rotation);
+        lastSafePosition = target;
+        lastSafeRotation = rotation;
         yVelocity = 0f;
         knockbackVelocity = Vector3.zero;
+    }
+
+    /// <summary>Matches CreatePlayer in RanchWorldBuilder.</summary>
+    private static readonly Vector3 WorldSpawn = new Vector3(0f, 1.1f, -10f);
+
+    // The generated world spans roughly x -45..180 and z -45..45. Anything well
+    // outside that is not a place the player can stand.
+    private static bool IsInsideWorldBounds(Vector3 position)
+    {
+        return position.x > -60f && position.x < 200f &&
+               position.z > -60f && position.z < 60f &&
+               position.y > -5f && position.y < 100f;
     }
 
     public void Teleport(Vector3 position, float rotationY)
