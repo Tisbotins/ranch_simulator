@@ -114,7 +114,9 @@ public class RanchUI : MonoBehaviour
         if (core.Health.IsDowned)
             DrawDownedScreen();
 
-        if (core.GameWon)
+        // Shown for a while after the win, then dismissed so it does not
+        // permanently cover a game the player can still play.
+        if (core.GameWon && core.StatusMessageTime > 900f)
             DrawWinScreen();
 
         GUI.matrix = old;
@@ -366,7 +368,7 @@ public class RanchUI : MonoBehaviour
         GUI.Label(new Rect(rect.x + 30f, rect.y + 35f, rect.width - 60f, 75f), "CJ HAS BEEN OVERTHROWN", largeStyle);
         GUI.Label(
             new Rect(rect.x + 80f, rect.y + 140f, rect.width - 160f, 180f),
-            "CJ: You have become... the Ranch Simulator.\n\nDrew: There is another.\n\nPress R to erase the completed save and start a new game.",
+            "CJ: You have become... the Ranch Simulator.\n\nDrew: There is another.\n\nYour ranch endures. Keep playing, or wipe your save from the pause menu.",
             centeredStyle
         );
     }

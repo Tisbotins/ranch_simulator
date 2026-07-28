@@ -170,8 +170,8 @@ public class RanchGameCore : MonoBehaviour
         GameWon = gameWon;
         CJ.CheckProgress();
 
-        if (GameWon && Player != null)
-            Player.enabled = false;
+        // Never disable the player on load. A completed run is still playable,
+        // and a frozen player with no restart key is unrecoverable.
     }
 
     public void NotifyResourcesChanged()
@@ -207,16 +207,14 @@ public class RanchGameCore : MonoBehaviour
         GameWon = true;
         Progression.AddExperience(1500f, "Defeated Cosmic CJ");
         ShowMessage(
-            "You defeated Cosmic CJ and freed every ranch in the galaxy. Press R for a new game.",
+            "You defeated Cosmic CJ. Every ranch in the galaxy is free.",
             999f
         );
         GameWonEvent?.Invoke();
 
-        if (Player != null)
-            Player.enabled = false;
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
+        // The player is deliberately left in control. Freezing them here used to
+        // be fine because R restarted the game; with that gone it would be a
+        // soft lock. The ranch is theirs to keep playing.
         Save.SaveGame(false);
     }
 
@@ -232,11 +230,10 @@ public class RanchGameCore : MonoBehaviour
         if (StatusMessageTime > 0f)
             StatusMessageTime -= Time.unscaledDeltaTime;
 
-        if (GameWon && Input.GetKeyDown(KeyCode.R))
-        {
-            RestartAfterVictory();
-            return;
-        }
+        // No R-to-erase. Wiping a completed run from the victory screen was the
+        // single most destructive key in the game and repeatedly cost players
+        // their save. Ctrl+Shift+Delete (RanchAdminSystem) is the deliberate,
+        // confirmed way to clear save data.
 
         // Single-player only: in multiplayer death becomes a revivable "downed"
         // state, so reloading the scene here would needlessly break the session.
@@ -245,14 +242,4 @@ public class RanchGameCore : MonoBehaviour
             RestartScene();
     }
 
-    private void RestartAfterVictory()
-    {
-        Time.timeScale = 1f;
-
-        if (Save != null)
-            Save.DeleteSave();
-
-        Scene scene = SceneManager.GetActiveScene();
-        SceneManager.LoadScene(scene.name);
-    }
 }

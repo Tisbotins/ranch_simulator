@@ -256,10 +256,115 @@ public class RanchSpaceSystem : MonoBehaviour
                 world.SkyColor * 1.6f, RanchVisuals.Surface.Satin);
         }
 
+        BuildLandmarks(root.transform, world);
         BuildAlienTree(root.transform, world);
         BuildRocketPad(root.transform, world);
 
         root.SetActive(false);
+    }
+
+    /// <summary>
+    /// Terrain that makes each world read as a distinct place rather than a
+    /// flat arena. The shapes are drawn from the world's own hazard, so what
+    /// the player sees is what is hurting them.
+    /// </summary>
+    private void BuildLandmarks(Transform parent, World world)
+    {
+        GameObject group = new GameObject("Landmarks");
+        group.transform.SetParent(parent, false);
+        Transform t = group.transform;
+
+        switch (world.Danger)
+        {
+            case Hazard.SporeBloom:
+                // Fungal towers with drifting caps.
+                for (int i = 0; i < 9; i++)
+                {
+                    float a = i * 40f * Mathf.Deg2Rad;
+                    float r = 30f + (i % 3) * 12f;
+                    Vector3 p = new Vector3(Mathf.Sin(a) * r, 0f, Mathf.Cos(a) * r);
+                    float h = 6f + (i % 4) * 3f;
+                    Slab(t, "Stalk " + i, p + Vector3.up * (h * 0.5f),
+                        new Vector3(1.6f, h, 1.6f),
+                        new Color(0.38f, 0.46f, 0.30f), RanchVisuals.Surface.Rough);
+                    Slab(t, "Cap " + i, p + Vector3.up * h,
+                        new Vector3(7f, 1.2f, 7f),
+                        world.RanchColor * 0.8f, RanchVisuals.Surface.Emissive);
+                }
+                break;
+
+            case Hazard.Emberfall:
+                // Lava vents and cooled basalt slabs.
+                for (int i = 0; i < 10; i++)
+                {
+                    float a = i * 36f * Mathf.Deg2Rad;
+                    float r = 26f + (i % 4) * 11f;
+                    Vector3 p = new Vector3(Mathf.Sin(a) * r, 0f, Mathf.Cos(a) * r);
+                    Slab(t, "Vent " + i, p + Vector3.up * 0.6f,
+                        new Vector3(9f, 1.2f, 9f),
+                        new Color(0.16f, 0.09f, 0.07f), RanchVisuals.Surface.Rough);
+                    Slab(t, "Magma " + i, p + Vector3.up * 1.1f,
+                        new Vector3(6f, 0.4f, 6f),
+                        new Color(1f, 0.42f, 0.08f), RanchVisuals.Surface.Emissive);
+                    Slab(t, "Spire " + i, p + Vector3.up * 5f,
+                        new Vector3(2.2f, 10f, 2.2f),
+                        new Color(0.13f, 0.10f, 0.10f), RanchVisuals.Surface.Rough);
+                }
+                break;
+
+            case Hazard.DeepFreeze:
+                // Ice shards angled out of the ground.
+                for (int i = 0; i < 14; i++)
+                {
+                    float a = i * 26f * Mathf.Deg2Rad;
+                    float r = 22f + (i % 5) * 10f;
+                    Vector3 p = new Vector3(Mathf.Sin(a) * r, 0f, Mathf.Cos(a) * r);
+                    float h = 8f + (i % 4) * 5f;
+                    GameObject shard = Slab(t, "Shard " + i, p + Vector3.up * (h * 0.4f),
+                        new Vector3(2.6f, h, 2.6f),
+                        new Color(0.68f, 0.86f, 1f), RanchVisuals.Surface.Glossy);
+                    shard.transform.localRotation =
+                        Quaternion.Euler((i % 3) * 9f - 9f, i * 26f, (i % 4) * 7f - 10f);
+                }
+                break;
+
+            case Hazard.PrismFlux:
+                // Refracting pillars in a market ring.
+                for (int i = 0; i < 12; i++)
+                {
+                    float a = i * 30f * Mathf.Deg2Rad;
+                    Vector3 p = new Vector3(Mathf.Sin(a) * 34f, 0f, Mathf.Cos(a) * 34f);
+                    Slab(t, "Pillar " + i, p + Vector3.up * 7f,
+                        new Vector3(2.4f, 14f, 2.4f),
+                        new Color(0.30f, 0.18f, 0.40f), RanchVisuals.Surface.Satin);
+                    Slab(t, "Prism " + i, p + Vector3.up * 15f,
+                        Vector3.one * 3.4f,
+                        Color.Lerp(world.RanchColor, Color.white, (i % 4) * 0.22f),
+                        RanchVisuals.Surface.Emissive);
+                    Slab(t, "Stall " + i, p * 0.72f + Vector3.up * 1.2f,
+                        new Vector3(5f, 2.4f, 5f),
+                        new Color(0.34f, 0.22f, 0.44f), RanchVisuals.Surface.Satin);
+                }
+                break;
+
+            case Hazard.CosmicPressure:
+                // Monoliths funnelling every strand of Ranch inward.
+                for (int i = 0; i < 8; i++)
+                {
+                    float a = i * 45f * Mathf.Deg2Rad;
+                    Vector3 p = new Vector3(Mathf.Sin(a) * 40f, 0f, Mathf.Cos(a) * 40f);
+                    Slab(t, "Monolith " + i, p + Vector3.up * 12f,
+                        new Vector3(5f, 24f, 5f),
+                        new Color(0.08f, 0.06f, 0.14f), RanchVisuals.Surface.Satin);
+                    Slab(t, "Conduit " + i, p * 0.5f + Vector3.up * 0.8f,
+                        new Vector3(2f, 0.6f, 40f),
+                        world.RanchColor, RanchVisuals.Surface.Emissive);
+                }
+                Slab(t, "Core Altar", new Vector3(0f, 1f, 0f),
+                    new Vector3(18f, 2f, 18f),
+                    new Color(0.16f, 0.12f, 0.24f), RanchVisuals.Surface.Metal);
+                break;
+        }
     }
 
     // Each world grows its own Ranch, so the player can actually refuel here.
@@ -547,6 +652,34 @@ public class RanchSpaceSystem : MonoBehaviour
         }
     }
 
+    private float ambientTimer;
+
+    /// <summary>
+    /// A slow trickle of native hostiles, so a world is a place with things
+    /// living on it rather than an empty arena between nemesis fights. Capped,
+    /// and paused while a nemesis or the final boss is on the field so fights
+    /// do not turn into a swarm.
+    /// </summary>
+    private void UpdateAmbientLife()
+    {
+        if (!IsOffWorld || IsOpen || core.Waves == null || core.Player == null)
+            return;
+
+        if (evilDrewSpawned || cosmicBossSpawned)
+            return;
+
+        ambientTimer -= Time.deltaTime;
+        if (ambientTimer > 0f)
+            return;
+
+        ambientTimer = Mathf.Max(6f, 16f - PlanetIndex * 2f);
+
+        if (core.Waves.ActiveEnemies.Count >= 4 + PlanetIndex)
+            return;
+
+        core.Waves.SpawnFinalBattleGuard(core.Player.transform.position, PlanetIndex);
+    }
+
     // --------------------------------------------------------------- update
 
     private void Update()
@@ -557,6 +690,7 @@ public class RanchSpaceSystem : MonoBehaviour
         UpdateCosmicBoss();
         UpdateEvilDrew();
         UpdateHazard();
+        UpdateAmbientLife();
         AccumulateFuel();
         HandleConsoleToggle();
     }
